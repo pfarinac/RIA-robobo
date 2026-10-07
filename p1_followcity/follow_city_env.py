@@ -35,11 +35,16 @@ class FollowCityEnv(gym.Env):
     """El seguidor controla avance y giro; el guía lo mueve el simulador.
 
     La acción es [avance, giro], normalizada cada componente en [-1, 1].
+
+    Observación: [visible, error_x, error_y, tamaño, último_error_x,
+    tiempo_perdido]. El tiempo perdido se normaliza con el límite de
+    pérdida del episodio; si no hay detección actual, error_x, error_y
+    y tamaño son cero.
     """
 
     metadata = {'render_modes': []}
 
-    def __init__(self, verbose=False):
+    def __init__(self, verbose=False, usar_demostracion_inicial=True):
         super().__init__()
         if BlobArray is None:
             raise ImportError('No se encuentra robobo_ros2_interfaces/BlobArray.')
@@ -48,6 +53,7 @@ class FollowCityEnv(gym.Env):
 
         self.nodo = Node('follow_city_rl')
         self.verbose = verbose
+        self.usar_demostracion_inicial = usar_demostracion_inicial
         self.pub_vel = self.nodo.create_publisher(
             Twist, NS_BASE + '/cmd_vel', 10)
         self.cli_reset = self.nodo.create_client(
@@ -89,8 +95,9 @@ class FollowCityEnv(gym.Env):
             raise RuntimeError('No se pudo activar la detección de blobs verdes.')
 
         self.observation_space = spaces.Box(
-            low=np.array([0.0, -1.0, -1.0, 0.0], dtype=np.float32),
-            high=np.ones(4, dtype=np.float32),
+            low=np.array(
+                [0.0, -1.0, -1.0, 0.0, -1.0, 0.0], dtype=np.float32),
+            high=np.ones(6, dtype=np.float32),
             dtype=np.float32)
         self.action_space = spaces.Box(
             low=-1.0, high=1.0, shape=(2,), dtype=np.float32)
@@ -98,8 +105,11 @@ class FollowCityEnv(gym.Env):
             config.EPISODE_SECONDS / config.BLOB_PERIOD_S))
         self.pasos = 0
         self.inicio_perdida_blob = None
+        self.ultima_posicion_blob_x = None
+        self.instante_ultima_deteccion_blob = None
         self.giro_anterior = 0.0
         self.error_x_anterior = None
+        self.error_tamano_anterior = None
 
     def _cb_blobs(self, msg):
         self._blobs = list(msg.blobs)
@@ -180,11 +190,29 @@ class FollowCityEnv(gym.Env):
                     'No se ve la pelota verde. Revisa el TILT y Follow City.')
             secuencia = self._n_blobs
             self._esperar_mensaje(secuencia, restante)
+        self._observacion()
 
     def _observacion(self):
         blob = self._blob_verde()
         if blob is None:
-            return np.array([0.0, 0.0, 0.0, 0.0], dtype=np.float32)
+            ahora = time.monotonic()
+            if (
+                    self.inicio_perdida_blob is None
+                    and self.instante_ultima_deteccion_blob is not None):
+                self.inicio_perdida_blob = (
+                    self.instante_ultima_deteccion_blob)
+            tiempo_perdido = 0.0
+            if self.inicio_perdida_blob is not None:
+                tiempo_perdido = np.clip(
+                    (ahora - self.inicio_perdida_blob)
+                    / config.LOST_BLOB_SECONDS,
+                    0.0, 1.0)
+            ultima_posicion_x = (
+                self.ultima_posicion_blob_x
+                if self.ultima_posicion_blob_x is not None else 0.0)
+            return np.array(
+                [0.0, 0.0, 0.0, 0.0, ultima_posicion_x, tiempo_perdido],
+                dtype=np.float32)
         error_x = np.clip(
             (float(blob.x) - config.IMAGE_WIDTH_PX / 2) /
             (config.IMAGE_WIDTH_PX / 2), -1.0, 1.0)
@@ -192,7 +220,12 @@ class FollowCityEnv(gym.Env):
             (float(blob.y) - config.IMAGE_HEIGHT_PX / 2) /
             (config.IMAGE_HEIGHT_PX / 2), -1.0, 1.0)
         tamano = np.clip(float(blob.size) / config.BLOB_SIZE_MAX, 0.0, 1.0)
-        return np.array([1.0, error_x, error_y, tamano], dtype=np.float32)
+        self.ultima_posicion_blob_x = float(error_x)
+        self.instante_ultima_deteccion_blob = time.monotonic()
+        self.inicio_perdida_blob = None
+        return np.array(
+            [1.0, error_x, error_y, tamano, error_x, 0.0],
+            dtype=np.float32)
 
     def _potencial_visual(self, obs):
         error_tamano = abs(
@@ -210,46 +243,6 @@ class FollowCityEnv(gym.Env):
         for _ in range(3):
             self._publicar_velocidad(0.0, 0.0)
             time.sleep(0.05)
-
-    def _avance_inicial(self):
-        """Avanza unos ciclos al inicio del episodio antes de entregar control."""
-        try:
-            for _ in range(config.AUTO_FORWARD_STEPS):
-                secuencia = self._n_blobs
-                secuencia_ir = self._n_ir
-                plazo = time.monotonic() + config.SENSOR_TIMEOUT_S
-                siguiente_publicacion = time.monotonic()
-
-                while (
-                        self._n_blobs <= secuencia
-                        or self._n_ir <= secuencia_ir):
-                    ahora = time.monotonic()
-                    if ahora >= plazo:
-                        faltan = []
-                        if self._n_blobs <= secuencia:
-                            faltan.append(
-                                NS_SMARTPHONE + '/color_blobs')
-                        if self._n_ir <= secuencia_ir:
-                            faltan.append(NS_BASE + '/ir')
-                        raise RuntimeError(
-                            'No llegan lecturas nuevas de {}; se detuvo el '
-                            'avance inicial.'.format(', '.join(faltan)))
-                    if ahora >= siguiente_publicacion:
-                        self._publicar_velocidad(
-                            config.INITIAL_LINEAR_SPEED_M_S, 0.0)
-                        siguiente_publicacion = (
-                            ahora + config.CONTROL_PERIOD_S)
-                    rclpy.spin_once(self.nodo, timeout_sec=0.01)
-
-                obs = self._observacion()
-                proximidad = self._proximidad_frontal()
-                if (
-                        not obs[0]
-                        or obs[3] >= config.TOO_CLOSE_BLOB_SIZE_NORM
-                        or proximidad >= config.FRONT_IR_CONTACT_THRESHOLD):
-                    break
-        finally:
-            self._detener()
 
     def _reiniciar_simulacion(self):
         futuro = self.cli_reset.call_async(ResetSimulation.Request())
@@ -280,6 +273,9 @@ class FollowCityEnv(gym.Env):
         self._reiniciar_simulacion()
         self._poner_tilt_inicial()
         self._blobs = []
+        self.inicio_perdida_blob = None
+        self.ultima_posicion_blob_x = None
+        self.instante_ultima_deteccion_blob = None
         self._esperar_ir(self._n_ir, config.SENSOR_TIMEOUT_S)
 
     def reset(self, seed=None, options=None):
@@ -290,6 +286,8 @@ class FollowCityEnv(gym.Env):
             self._poner_tilt_inicial()
             self.pasos = 0
             self.inicio_perdida_blob = None
+            self.ultima_posicion_blob_x = None
+            self.instante_ultima_deteccion_blob = None
             self.giro_anterior = 0.0
             self._blobs = []
             secuencia = self._n_blobs
@@ -300,7 +298,6 @@ class FollowCityEnv(gym.Env):
                 self._esperar_ir(secuencia_ir, config.SENSOR_TIMEOUT_S)
                 self._esperar_blob_verde(config.RESET_SENSOR_TIMEOUT_S)
                 time.sleep(config.GUIDE_START_DELAY_S)
-                self._avance_inicial()
             except RuntimeError as error:
                 error_topic_blob = (
                     'No llegan mensajes de {}/color_blobs.'
@@ -318,6 +315,8 @@ class FollowCityEnv(gym.Env):
 
             obs = self._observacion()
             self.error_x_anterior = abs(float(obs[1]))
+            self.error_tamano_anterior = abs(
+                float(obs[3]) - config.TARGET_BLOB_SIZE_NORM)
             return obs, {}
 
         raise RuntimeError(
@@ -325,6 +324,11 @@ class FollowCityEnv(gym.Env):
 
     def step(self, accion):
         accion = np.clip(np.asarray(accion, dtype=np.float32), -1.0, 1.0)
+        accion_demostracion = (
+            self.usar_demostracion_inicial
+            and self.pasos < config.AUTO_FORWARD_STEPS)
+        if accion_demostracion:
+            accion = np.array([1.0, 0.0], dtype=np.float32)
         velocidad_maxima = (
             config.INITIAL_LINEAR_SPEED_M_S
             if self.pasos < config.INITIAL_SLOW_STEPS
@@ -363,6 +367,8 @@ class FollowCityEnv(gym.Env):
                         'tamano_norm': float(obs[3]),
                         'velocidad_lineal': velocidad_lineal,
                         'velocidad_angular': self.giro_anterior,
+                        '_accion_ejecutada': (
+                            accion.tolist() if accion_demostracion else None),
                     }
                     return obs, -1.0, True, False, info
                 faltan = []
@@ -377,14 +383,14 @@ class FollowCityEnv(gym.Env):
                 siguiente_publicacion = ahora + config.CONTROL_PERIOD_S
             rclpy.spin_once(self.nodo, timeout_sec=0.01)
 
+        estaba_perdido = self.inicio_perdida_blob is not None
         self.pasos += 1
         obs = self._observacion()
         proximidad_frontal = self._proximidad_frontal()
         contacto_aproximado = (
             proximidad_frontal >= config.FRONT_IR_CONTACT_THRESHOLD)
         if obs[0]:
-            blob_recuperado = self.inicio_perdida_blob is not None
-            self.inicio_perdida_blob = None
+            blob_recuperado = estaba_perdido
             recompensa = -self._potencial_visual(obs)
             if blob_recuperado:
                 recompensa += config.BLOB_RECOVERY_REWARD
@@ -394,6 +400,12 @@ class FollowCityEnv(gym.Env):
                 recompensa += (
                     config.HORIZONTAL_PROGRESS_WEIGHT * mejora_horizontal)
             self.error_x_anterior = abs(float(obs[1]))
+            error_tamano = abs(
+                float(obs[3]) - config.TARGET_BLOB_SIZE_NORM)
+            if self.error_tamano_anterior is not None:
+                mejora_tamano = self.error_tamano_anterior - error_tamano
+                recompensa += config.SIZE_PROGRESS_WEIGHT * mejora_tamano
+            self.error_tamano_anterior = error_tamano
             blob_centrado = (
                 abs(float(obs[1])) <= config.STABILITY_ERROR_X_TOLERANCE)
             distancia_correcta = (
@@ -402,10 +414,9 @@ class FollowCityEnv(gym.Env):
             if blob_centrado and distancia_correcta:
                 recompensa += config.STABILITY_REWARD
         else:
-            if self.inicio_perdida_blob is None:
-                self.inicio_perdida_blob = time.monotonic()
             recompensa = config.LOST_BLOB_REWARD
             self.error_x_anterior = None
+            self.error_tamano_anterior = None
         if contacto_aproximado:
             recompensa -= config.CONTACT_PENALTY
 
@@ -442,6 +453,8 @@ class FollowCityEnv(gym.Env):
             'tamano_norm': float(obs[3]),
             'velocidad_lineal': velocidad_lineal,
             'velocidad_angular': self.giro_anterior,
+            '_accion_ejecutada': (
+                accion.tolist() if accion_demostracion else None),
         }
         if self.verbose:
             print('paso={} visible={} ex={:+.2f} ey={:+.2f} '
