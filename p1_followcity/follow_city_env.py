@@ -233,6 +233,18 @@ class FollowCityEnv(gym.Env):
         return (0.7 * abs(float(obs[1]))
                 + 0.3 * error_tamano)
 
+    def _recompensa_busqueda_blob_perdido(self, obs):
+        ultima_posicion_x = float(obs[4])
+        if abs(ultima_posicion_x) <= config.STABILITY_ERROR_X_TOLERANCE:
+            return 0.0
+        sentido_hacia_blob = -float(np.sign(ultima_posicion_x))
+        giro_normalizado = (
+            self.giro_anterior / config.MAX_ANGULAR_SPEED_RAD_S)
+        return (
+            config.LOST_BLOB_TURN_REWARD
+            * sentido_hacia_blob
+            * giro_normalizado)
+
     def _publicar_velocidad(self, lineal, angular):
         mensaje = Twist()
         mensaje.linear.x = float(lineal)
@@ -414,7 +426,9 @@ class FollowCityEnv(gym.Env):
             if blob_centrado and distancia_correcta:
                 recompensa += config.STABILITY_REWARD
         else:
-            recompensa = config.LOST_BLOB_REWARD
+            recompensa = (
+                config.LOST_BLOB_REWARD
+                + self._recompensa_busqueda_blob_perdido(obs))
             self.error_x_anterior = None
             self.error_tamano_anterior = None
         if contacto_aproximado:

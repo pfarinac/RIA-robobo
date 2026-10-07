@@ -76,8 +76,8 @@ def modo_entrenar(args):
         def _on_step(self):
             for indice, (recompensa, terminado) in enumerate(zip(
                     self.locals['rewards'], self.locals['dones'])):
-                accion_ejecutada = self.locals['infos'][indice].get(
-                    '_accion_ejecutada')
+                info = self.locals['infos'][indice]
+                accion_ejecutada = info.get('_accion_ejecutada')
                 if accion_ejecutada is not None:
                     self.locals['buffer_actions'][indice] = np.asarray(
                         accion_ejecutada, dtype=np.float32)
@@ -85,12 +85,20 @@ def modo_entrenar(args):
                 self.pasos_actual += 1
                 if terminado:
                     self.episodios_completados += 1
+                    motivo_fin = info.get('motivo_fin')
+                    if motivo_fin is None and info.get(
+                            'TimeLimit.truncated', False):
+                        motivo_fin = 'duración máxima (truncado)'
+                    if motivo_fin is None:
+                        motivo_fin = 'sin motivo informado'
                     print(
-                        'episodio {:3d}: pasos={:3d} recompensa={:8.2f}'
+                        'episodio {:3d}: pasos={:3d} recompensa={:8.2f} '
+                        'fin={}'
                         .format(
                             self.episodios_completados,
                             self.pasos_actual,
-                            self.recompensa_actual),
+                            self.recompensa_actual,
+                            motivo_fin),
                         flush=True)
                     self.recompensa_actual = 0.0
                     self.pasos_actual = 0
