@@ -48,13 +48,16 @@ def modo_calibrar():
                 continue
             print(
                 'IR={:>5} {:>5} {:>5}  prox={:.3f}  visible={}  '
-                'ex={:+.2f} ey={:+.2f} tamano={:.3f}'
+                'ex={:+.2f} ey={:+.2f} tamano={:.3f} px={:.0f}'
                 .format(
                     ir[0], ir[1], ir[2],
                     lectura['proximidad_frontal'],
                     lectura['blob_visible'],
                     lectura['error_x'], lectura['error_y'],
-                    lectura['tamano_norm']))
+                    lectura['tamano_norm'], lectura['error_x'],
+                    lectura['error_y'],
+                    lectura['tamano_norm'], 
+                    lectura['tamano_px']))
     except KeyboardInterrupt:
         print('\nCalibración terminada.')
     finally:
