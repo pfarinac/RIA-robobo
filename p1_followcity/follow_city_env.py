@@ -110,7 +110,6 @@ class FollowCityEnv(gym.Env):
         self.giro_anterior = 0.0
         self.error_x_anterior = None
         self.error_tamano_anterior = None
-        self.tamano_px = 0.0
 
     def _cb_blobs(self, msg):
         self._blobs = list(msg.blobs)
@@ -148,7 +147,6 @@ class FollowCityEnv(gym.Env):
             rclpy.spin_once(self.nodo, timeout_sec=min(0.05, restante))
     
     def _vaciar_cola(self):
-    
         for _ in range(100):
             antes = (self._n_blobs, self._n_ir)
             rclpy.spin_once(self.nodo, timeout_sec=0.0)
@@ -186,7 +184,6 @@ class FollowCityEnv(gym.Env):
             'error_x': float(obs[1]),
             'error_y': float(obs[2]),
             'tamano_norm': float(obs[3]),
-            'tamano_px': self.tamano_px,
         }
 
     def _esperar_blob_verde(self, timeout=None):
@@ -229,9 +226,7 @@ class FollowCityEnv(gym.Env):
         error_y = np.clip(
             (float(blob.y) - config.IMAGE_HEIGHT_PX / 2) /
             (config.IMAGE_HEIGHT_PX / 2), -1.0, 1.0)
-        self.tamano_px = float(blob.size)
-        tamano = np.clip(
-            np.sqrt(float(blob.size) / config.BLOB_SIZE_MAX), 0.0, 1.0)
+        tamano = np.clip(float(blob.size) / config.BLOB_SIZE_MAX, 0.0, 1.0)
         self.ultima_posicion_blob_x = float(error_x)
         self.instante_ultima_deteccion_blob = time.monotonic()
         self.inicio_perdida_blob = None
@@ -327,7 +322,11 @@ class FollowCityEnv(gym.Env):
                     raise
                 continue
 
-            return self._observacion(), {}
+            obs = self._observacion()
+            self.error_x_anterior = abs(float(obs[1]))
+            self.error_tamano_anterior = abs(
+                float(obs[3]) - config.TARGET_BLOB_SIZE_NORM)
+            return obs, {}
 
         raise RuntimeError(
             'No se pudo reiniciar el episodio tras perder el topic de blobs.')
@@ -349,11 +348,11 @@ class FollowCityEnv(gym.Env):
             + fraccion_avance
             * (velocidad_maxima - config.MIN_LINEAR_SPEED_M_S))
         giro_solicitado = float(accion[1]) * config.MAX_ANGULAR_SPEED_RAD_S
-        cambio_giro = float(np.clip(
+        cambio_giro = np.clip(
             giro_solicitado - self.giro_anterior,
             -config.MAX_ANGULAR_CHANGE_RAD_S,
-            config.MAX_ANGULAR_CHANGE_RAD_S))
-        self.giro_anterior += cambio_giro
+            config.MAX_ANGULAR_CHANGE_RAD_S)
+        self.giro_anterior += float(cambio_giro)
 
         # 1. Aplicar la acción y dejar que surta efecto.
         self._publicar_velocidad(velocidad_lineal, self.giro_anterior)
@@ -362,44 +361,24 @@ class FollowCityEnv(gym.Env):
         while time.monotonic() < fin_espera:
             rclpy.spin_once(self.nodo, timeout_sec=0.01)
 
-        # 2. Descartar lo publicado antes de este instante.
+        # 2. Descartar todo lo publicado antes (puede ser anterior a la acción).
         self._vaciar_cola()
         secuencia = self._n_blobs
         secuencia_ir = self._n_ir
 
-        # 3. Esperar un blob y un IR publicados después.
+        # 3. Esperar un blob y un IR publicados DESPUÉS de ese instante.
         plazo = time.monotonic() + config.SENSOR_TIMEOUT_S
         while self._n_blobs <= secuencia or self._n_ir <= secuencia_ir:
             ahora = time.monotonic()
             if ahora >= plazo:
-                self._detener()
-                if self._n_blobs <= secuencia:
-                    obs = self._observacion()
-                    info = {
-                        'visible': bool(obs[0]),
-                        'demasiado_cerca': False,
-                        'contacto_aproximado': False,
-                        'proximidad_frontal': self._proximidad_frontal(),
-                        'motivo_fin': 'sin mensajes del topic de blobs',
-                        'error_x': float(obs[1]),
-                        'error_y': float(obs[2]),
-                        'tamano_norm': float(obs[3]),
-                        'tamano_px': self.tamano_px,
-                        'velocidad_lineal': velocidad_lineal,
-                        'velocidad_angular': self.giro_anterior,
-                        '_accion_ejecutada': (
-                            accion.tolist() if accion_demostracion else None),
-                    }
-                    return obs, -1.0, True, False, info
-                raise RuntimeError(
-                    'No llegan lecturas nuevas de {}; se detuvo el seguidor.'
-                    .format(NS_BASE + '/ir'))
+                # --- deja aquí exactamente tu bloque actual del timeout ---
+                ...
             if ahora >= siguiente_publicacion:
-                self._publicar_velocidad(velocidad_lineal, self.giro_anterior)
+                self._publicar_velocidad(
+                    velocidad_lineal, self.giro_anterior)
                 siguiente_publicacion = ahora + config.CONTROL_PERIOD_S
             rclpy.spin_once(self.nodo, timeout_sec=0.01)
 
-        # 4. Observación y condiciones de fin.
         self.pasos += 1
         obs = self._observacion()
         proximidad_frontal = self._proximidad_frontal()
@@ -412,25 +391,27 @@ class FollowCityEnv(gym.Env):
             and time.monotonic() - self.inicio_perdida_blob
             >= config.LOST_BLOB_SECONDS)
         fallo = (contacto_aproximado or demasiado_cerca
-                or blob_perdido_demasiado_tiempo)
+                 or blob_perdido_demasiado_tiempo)
 
-        # 5. Recompensa: no negativa mientras sigue al guía.
+        # --- Recompensa: nunca negativa mientras sigue bien ---
         if obs[0]:
             centrado = np.exp(
                 -(float(obs[1]) / config.FOLLOW_SIGMA_X) ** 2)
             distancia = np.exp(
                 -((float(obs[3]) - config.TARGET_BLOB_SIZE_NORM)
-                / config.FOLLOW_SIGMA_SIZE) ** 2)
-            recompensa = (config.ALIVE_REWARD
-                        + config.FOLLOW_WEIGHT_X * centrado
-                        + config.FOLLOW_WEIGHT_SIZE * distancia)
+                  / config.FOLLOW_SIGMA_SIZE) ** 2)
+            recompensa = config.FOLLOW_REWARD * centrado * distancia
         else:
-            recompensa = 0.0
-        recompensa -= (config.SMOOTHNESS_WEIGHT * abs(cambio_giro)
-                    / config.MAX_ANGULAR_CHANGE_RAD_S)
+            recompensa = 0.0          # blob perdido: sin premio
+        recompensa -= (config.SMOOTHNESS_WEIGHT
+                       * abs(float(cambio_giro))
+                       / config.MAX_ANGULAR_CHANGE_RAD_S)
         if fallo:
             recompensa -= config.FAILURE_PENALTY
-
+        blob_perdido_demasiado_tiempo = (
+            self.inicio_perdida_blob is not None
+            and time.monotonic() - self.inicio_perdida_blob
+            >= config.LOST_BLOB_SECONDS)
         motivo_fin = None
         if contacto_aproximado:
             motivo_fin = 'proximidad frontal (choque aproximado)'
@@ -440,7 +421,10 @@ class FollowCityEnv(gym.Env):
             motivo_fin = 'blob perdido'
         elif self.pasos >= self.pasos_max:
             motivo_fin = 'duración máxima'
-        terminated = bool(fallo)
+        terminated = (
+            contacto_aproximado
+            or demasiado_cerca
+            or blob_perdido_demasiado_tiempo)
         truncated = self.pasos >= self.pasos_max
         if terminated or truncated:
             self._detener()
@@ -453,19 +437,18 @@ class FollowCityEnv(gym.Env):
             'error_x': float(obs[1]),
             'error_y': float(obs[2]),
             'tamano_norm': float(obs[3]),
-            'tamano_px': self.tamano_px,
             'velocidad_lineal': velocidad_lineal,
             'velocidad_angular': self.giro_anterior,
             '_accion_ejecutada': (
                 accion.tolist() if accion_demostracion else None),
         }
         if self.verbose:
-            print('paso={} visible={} ex={:+.2f} tam={:.3f} ({:.0f}px) '
-                'v={:.2f} w={:+.2f} r={:+.2f} fin={}'
-                .format(self.pasos, info['visible'], info['error_x'],
-                        info['tamano_norm'], self.tamano_px,
-                        velocidad_lineal, self.giro_anterior,
-                        recompensa, motivo_fin))
+            print('paso={} visible={} ex={:+.2f} ey={:+.2f} '
+              'v={:.2f} w={:+.2f} r={:+.2f} contacto_aproximado={}'
+              .format(self.pasos, info['visible'], info['error_x'],
+                          info['error_y'], velocidad_lineal,
+                          self.giro_anterior, recompensa,
+                          contacto_aproximado))
         return obs, float(recompensa), terminated, truncated, info
 
     def close(self):
