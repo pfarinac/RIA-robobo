@@ -70,13 +70,34 @@ def modo_entrenar(args):
             super().__init__()
             self.episodios_objetivo = episodios_objetivo
             self.episodios_completados = 0
+            self.recompensa_actual = 0.0
+            self.pasos_actual = 0
 
         def _on_step(self):
-            self.episodios_completados += int(
-                np.count_nonzero(self.locals['dones']))
+            for indice, (recompensa, terminado) in enumerate(zip(
+                    self.locals['rewards'], self.locals['dones'])):
+                accion_ejecutada = self.locals['infos'][indice].get(
+                    '_accion_ejecutada')
+                if accion_ejecutada is not None:
+                    self.locals['buffer_actions'][indice] = np.asarray(
+                        accion_ejecutada, dtype=np.float32)
+                self.recompensa_actual += float(recompensa)
+                self.pasos_actual += 1
+                if terminado:
+                    self.episodios_completados += 1
+                    print(
+                        'episodio {:3d}: pasos={:3d} recompensa={:8.2f}'
+                        .format(
+                            self.episodios_completados,
+                            self.pasos_actual,
+                            self.recompensa_actual),
+                        flush=True)
+                    self.recompensa_actual = 0.0
+                    self.pasos_actual = 0
             return self.episodios_completados < self.episodios_objetivo
 
-    env = Monitor(FollowCityEnv())
+    entorno_base = FollowCityEnv(usar_demostracion_inicial=True)
+    env = Monitor(entorno_base)
     try:
         modelo = construir_algoritmo(env)
         callback = EpisodiosCallback(args.episodios_entrenamiento)
@@ -120,6 +141,7 @@ def modo_entrenar(args):
                   'revisa el puente ROS antes de continuar.')
             return
         if callback.episodios_completados:
+            entorno_base.usar_demostracion_inicial = False
             resumen(
                 env,
                 politica=lambda obs: modelo.predict(
@@ -141,7 +163,7 @@ def modo_evaluar(args):
             'No existe {}.zip; ejecuta primero --entrenar.'.format(
                 RUTA_MODELO))
 
-    env = FollowCityEnv()
+    env = FollowCityEnv(usar_demostracion_inicial=False)
     try:
         modelo = SAC.load(ruta_zip, env=env)
         resumen(
