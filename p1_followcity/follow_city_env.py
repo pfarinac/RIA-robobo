@@ -1,9 +1,6 @@
 #!/usr/bin/env python3
 """Entorno Gymnasium mínimo para seguir la pelota verde en Follow City."""
 
-import re
-import shutil
-import subprocess
 import time
 
 import gymnasium as gym
@@ -11,8 +8,10 @@ import numpy as np
 from gymnasium import spaces
 
 import rclpy
+from rclpy.action import ActionClient
 from geometry_msgs.msg import Twist
 from rclpy.node import Node
+from robobo_ros2_interfaces.action import MoveTilt
 from robobo_ros2_interfaces.srv import (
     ResetSimulation,
     SetActiveColorBlobs,
@@ -57,6 +56,11 @@ class FollowCityEnv(gym.Env):
             raise RuntimeError(
                 'No responde {}/reset_simulation. Lanza el puente con '
                 "los módulos ['sim', 'blob'].".format(NS_SIM))
+        self.accion_tilt = ActionClient(
+            self.nodo, MoveTilt, NS_BASE + '/move_tilt')
+        if not self.accion_tilt.wait_for_server(timeout_sec=5.0):
+            raise RuntimeError(
+                'No responde la acción {}/move_tilt.'.format(NS_BASE))
         self._blobs = []
         self._n_blobs = 0
         self.nodo.create_subscription(
@@ -254,42 +258,21 @@ class FollowCityEnv(gym.Env):
         respuesta = futuro.result()
         if respuesta is None or not respuesta.success:
             raise RuntimeError('El reinicio de la simulación ha fallado.')
+        time.sleep(0.5)
 
     def _poner_tilt_inicial(self):
-        ros2 = shutil.which('ros2')
-        if ros2 is None:
+        objetivo = MoveTilt.Goal()
+        objetivo.angle = float(config.TILT_ANGLE_DEG)
+        objetivo.speed = float(config.TILT_SPEED_DEG_S)
+        futuro = self.accion_tilt.send_goal_async(objetivo)
+        rclpy.spin_until_future_complete(
+            self.nodo, futuro, timeout_sec=5.0)
+        if not futuro.done():
             raise RuntimeError(
-                'No se encuentra el comando ros2 para mover el TILT.')
-
-        solicitud = (
-            '{{angle: {:.1f}, speed: {:.1f}}}'
-            .format(config.TILT_ANGLE_DEG, config.TILT_SPEED_DEG_S))
-        try:
-            proceso = subprocess.run(
-                [
-                    ros2, 'service', 'call',
-                    NS_BASE + '/move_tilt',
-                    'robobo_ros2_interfaces/srv/MoveTilt',
-                    solicitud,
-                ],
-                capture_output=True,
-                text=True,
-                timeout=config.TILT_TIMEOUT_S,
-                check=False,
-            )
-        except subprocess.TimeoutExpired as error:
-            raise RuntimeError(
-                'La llamada ROS para mover el TILT superó el límite de '
-                '{} segundos.'.format(config.TILT_TIMEOUT_S)) from error
-        salida = proceso.stdout + proceso.stderr
-        if proceso.returncode != 0:
-            raise RuntimeError(
-                'Falló la llamada ROS para mover el TILT: {}'.format(
-                    salida.strip()))
-        if not re.search(r'success\s*=\s*True', salida):
-            raise RuntimeError(
-                'La llamada ROS del TILT no confirmó success=True: {}'.format(
-                    salida.strip()))
+                'Se agotó el tiempo enviando la orden del TILT.')
+        gestor = futuro.result()
+        if gestor is None or not gestor.accepted:
+            raise RuntimeError('El Robobo rechazó la orden del TILT.')
 
     def preparar_calibracion(self):
         """Reinicia escena y TILT, sin exigir que el blob ya sea visible."""
@@ -316,6 +299,7 @@ class FollowCityEnv(gym.Env):
                     secuencia, config.RESET_SENSOR_TIMEOUT_S)
                 self._esperar_ir(secuencia_ir, config.SENSOR_TIMEOUT_S)
                 self._esperar_blob_verde(config.RESET_SENSOR_TIMEOUT_S)
+                time.sleep(config.GUIDE_START_DELAY_S)
                 self._avance_inicial()
             except RuntimeError as error:
                 error_topic_blob = (
@@ -399,18 +383,28 @@ class FollowCityEnv(gym.Env):
         contacto_aproximado = (
             proximidad_frontal >= config.FRONT_IR_CONTACT_THRESHOLD)
         if obs[0]:
+            blob_recuperado = self.inicio_perdida_blob is not None
             self.inicio_perdida_blob = None
             recompensa = -self._potencial_visual(obs)
+            if blob_recuperado:
+                recompensa += config.BLOB_RECOVERY_REWARD
             if self.error_x_anterior is not None:
                 mejora_horizontal = (
                     self.error_x_anterior - abs(float(obs[1])))
                 recompensa += (
                     config.HORIZONTAL_PROGRESS_WEIGHT * mejora_horizontal)
             self.error_x_anterior = abs(float(obs[1]))
+            blob_centrado = (
+                abs(float(obs[1])) <= config.STABILITY_ERROR_X_TOLERANCE)
+            distancia_correcta = (
+                abs(float(obs[3]) - config.TARGET_BLOB_SIZE_NORM)
+                <= config.STABILITY_BLOB_SIZE_TOLERANCE)
+            if blob_centrado and distancia_correcta:
+                recompensa += config.STABILITY_REWARD
         else:
             if self.inicio_perdida_blob is None:
                 self.inicio_perdida_blob = time.monotonic()
-            recompensa = -1.0
+            recompensa = config.LOST_BLOB_REWARD
             self.error_x_anterior = None
         if contacto_aproximado:
             recompensa -= config.CONTACT_PENALTY
