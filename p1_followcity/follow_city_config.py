@@ -5,15 +5,13 @@ IMAGE_HEIGHT_PX = 240
 BLOB_SIZE_MAX = 10000.0
 TARGET_BLOB_SIZE_NORM = 0.2
 TOO_CLOSE_BLOB_SIZE_NORM = 0.4
-STABILITY_ERROR_X_TOLERANCE = 0.15
-STABILITY_BLOB_SIZE_TOLERANCE = 0.05
-STABILITY_REWARD = 0.5
+
 IR_SATURATION = 1000.0
 FRONT_IR_INDICES = (1, 2, 3)
 FRONT_IR_CONTACT_THRESHOLD = 0.85
-CONTACT_PENALTY = 1.0
-HORIZONTAL_PROGRESS_WEIGHT = 1.0
-SIZE_PROGRESS_WEIGHT = 1.0
+
+
+
 TILT_ANGLE_DEG = 90.0
 TILT_SPEED_DEG_S = 20.0
 TILT_TIMEOUT_S = 10.0
@@ -29,8 +27,6 @@ CONTROL_PERIOD_S = 0.1
 BLOB_PERIOD_S = 0.2
 EPISODE_SECONDS = 60.0
 LOST_BLOB_SECONDS = 3.0
-LOST_BLOB_REWARD = -1.0
-BLOB_RECOVERY_REWARD = 1.0
 SENSOR_TIMEOUT_S = 3.0
 RESET_SENSOR_TIMEOUT_S = 10.0
 RESET_ATTEMPTS = 2
@@ -39,3 +35,12 @@ TRAIN_EPISODES = 100
 EVAL_EPISODES = 5
 MAX_STEPS_PER_EPISODE = max(
     1, int(EPISODE_SECONDS / BLOB_PERIOD_S))
+# Recompensa
+FOLLOW_REWARD = 1.0          # máximo por paso si está centrado y a la distancia objetivo
+FOLLOW_SIGMA_X = 0.3         # anchura de la campana en error_x
+FOLLOW_SIGMA_SIZE = 0.08     # anchura de la campana en tamaño normalizado
+SMOOTHNESS_WEIGHT = 0.1      # penalización por cambio brusco de giro
+FAILURE_PENALTY = 30.0       # choque, demasiado cerca o blob perdido
+
+# Temporización del paso
+ACTION_SETTLE_S = 0.1        # tiempo mínimo entre la acción y la observación

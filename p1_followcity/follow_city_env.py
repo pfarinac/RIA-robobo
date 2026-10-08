@@ -145,6 +145,13 @@ class FollowCityEnv(gym.Env):
                     'No llegan lecturas del topic {}/ir.'
                     .format(NS_BASE))
             rclpy.spin_once(self.nodo, timeout_sec=min(0.05, restante))
+    
+    def _vaciar_cola(self):
+        for _ in range(100):
+            antes = (self._n_blobs, self._n_ir)
+            rclpy.spin_once(self.nodo, timeout_sec=0.0)
+            if (self._n_blobs, self._n_ir) == antes:
+                return
 
     def _proximidad_frontal(self):
         if self._ir is None:
@@ -227,11 +234,7 @@ class FollowCityEnv(gym.Env):
             [1.0, error_x, error_y, tamano, error_x, 0.0],
             dtype=np.float32)
 
-    def _potencial_visual(self, obs):
-        error_tamano = abs(
-            float(obs[3]) - config.TARGET_BLOB_SIZE_NORM)
-        return (0.7 * abs(float(obs[1]))
-                + 0.3 * error_tamano)
+
 
     def _publicar_velocidad(self, lineal, angular):
         mensaje = Twist()
@@ -298,6 +301,12 @@ class FollowCityEnv(gym.Env):
                 self._esperar_ir(secuencia_ir, config.SENSOR_TIMEOUT_S)
                 self._esperar_blob_verde(config.RESET_SENSOR_TIMEOUT_S)
                 time.sleep(config.GUIDE_START_DELAY_S)
+                self._vaciar_cola()
+                self._esperar_mensaje(self._n_blobs, config.RESET_SENSOR_TIMEOUT_S)
+                self._esperar_ir(self._n_ir, config.SENSOR_TIMEOUT_S)
+                # Reinicia el reloj de "último blob visto": si no, un blob ausente tras
+                # la espera contaría como perdido desde hace 7 s y cerraría el episodio.
+                self.instante_ultima_deteccion_blob = time.monotonic()
             except RuntimeError as error:
                 error_topic_blob = (
                     'No llegan mensajes de {}/color_blobs.'
@@ -345,83 +354,60 @@ class FollowCityEnv(gym.Env):
             config.MAX_ANGULAR_CHANGE_RAD_S)
         self.giro_anterior += float(cambio_giro)
 
+        # 1. Aplicar la acción y dejar que surta efecto.
+        self._publicar_velocidad(velocidad_lineal, self.giro_anterior)
+        siguiente_publicacion = time.monotonic() + config.CONTROL_PERIOD_S
+        fin_espera = time.monotonic() + config.ACTION_SETTLE_S
+        while time.monotonic() < fin_espera:
+            rclpy.spin_once(self.nodo, timeout_sec=0.01)
+
+        # 2. Descartar todo lo publicado antes (puede ser anterior a la acción).
+        self._vaciar_cola()
         secuencia = self._n_blobs
         secuencia_ir = self._n_ir
+
+        # 3. Esperar un blob y un IR publicados DESPUÉS de ese instante.
         plazo = time.monotonic() + config.SENSOR_TIMEOUT_S
-        siguiente_publicacion = time.monotonic()
         while self._n_blobs <= secuencia or self._n_ir <= secuencia_ir:
             ahora = time.monotonic()
             if ahora >= plazo:
-                self._detener()
-                if self._n_blobs <= secuencia:
-                    obs = self._observacion()
-                    self.error_x_anterior = None
-                    info = {
-                        'visible': bool(obs[0]),
-                        'demasiado_cerca': False,
-                        'contacto_aproximado': False,
-                        'proximidad_frontal': self._proximidad_frontal(),
-                        'motivo_fin': 'sin mensajes del topic de blobs',
-                        'error_x': float(obs[1]),
-                        'error_y': float(obs[2]),
-                        'tamano_norm': float(obs[3]),
-                        'velocidad_lineal': velocidad_lineal,
-                        'velocidad_angular': self.giro_anterior,
-                        '_accion_ejecutada': (
-                            accion.tolist() if accion_demostracion else None),
-                    }
-                    return obs, -1.0, True, False, info
-                faltan = []
-                if self._n_ir <= secuencia_ir:
-                    faltan.append(NS_BASE + '/ir')
-                raise RuntimeError(
-                    'No llegan lecturas nuevas de {}; se detuvo el seguidor.'
-                    .format(', '.join(faltan)))
+                # --- deja aquí exactamente tu bloque actual del timeout ---
+                ...
             if ahora >= siguiente_publicacion:
                 self._publicar_velocidad(
                     velocidad_lineal, self.giro_anterior)
                 siguiente_publicacion = ahora + config.CONTROL_PERIOD_S
             rclpy.spin_once(self.nodo, timeout_sec=0.01)
 
-        estaba_perdido = self.inicio_perdida_blob is not None
         self.pasos += 1
         obs = self._observacion()
         proximidad_frontal = self._proximidad_frontal()
         contacto_aproximado = (
             proximidad_frontal >= config.FRONT_IR_CONTACT_THRESHOLD)
-        if obs[0]:
-            blob_recuperado = estaba_perdido
-            recompensa = -self._potencial_visual(obs)
-            if blob_recuperado:
-                recompensa += config.BLOB_RECOVERY_REWARD
-            if self.error_x_anterior is not None:
-                mejora_horizontal = (
-                    self.error_x_anterior - abs(float(obs[1])))
-                recompensa += (
-                    config.HORIZONTAL_PROGRESS_WEIGHT * mejora_horizontal)
-            self.error_x_anterior = abs(float(obs[1]))
-            error_tamano = abs(
-                float(obs[3]) - config.TARGET_BLOB_SIZE_NORM)
-            if self.error_tamano_anterior is not None:
-                mejora_tamano = self.error_tamano_anterior - error_tamano
-                recompensa += config.SIZE_PROGRESS_WEIGHT * mejora_tamano
-            self.error_tamano_anterior = error_tamano
-            blob_centrado = (
-                abs(float(obs[1])) <= config.STABILITY_ERROR_X_TOLERANCE)
-            distancia_correcta = (
-                abs(float(obs[3]) - config.TARGET_BLOB_SIZE_NORM)
-                <= config.STABILITY_BLOB_SIZE_TOLERANCE)
-            if blob_centrado and distancia_correcta:
-                recompensa += config.STABILITY_REWARD
-        else:
-            recompensa = config.LOST_BLOB_REWARD
-            self.error_x_anterior = None
-            self.error_tamano_anterior = None
-        if contacto_aproximado:
-            recompensa -= config.CONTACT_PENALTY
-
         demasiado_cerca = bool(
             obs[0] and obs[3] >= config.TOO_CLOSE_BLOB_SIZE_NORM)
+        blob_perdido_demasiado_tiempo = (
+            self.inicio_perdida_blob is not None
+            and time.monotonic() - self.inicio_perdida_blob
+            >= config.LOST_BLOB_SECONDS)
+        fallo = (contacto_aproximado or demasiado_cerca
+                 or blob_perdido_demasiado_tiempo)
+
+        # --- Recompensa: nunca negativa mientras sigue bien ---
+        if obs[0]:
+            centrado = np.exp(
+                -(float(obs[1]) / config.FOLLOW_SIGMA_X) ** 2)
+            distancia = np.exp(
+                -((float(obs[3]) - config.TARGET_BLOB_SIZE_NORM)
+                  / config.FOLLOW_SIGMA_SIZE) ** 2)
+            recompensa = config.FOLLOW_REWARD * centrado * distancia
+        else:
+            recompensa = 0.0          # blob perdido: sin premio
+        recompensa -= (config.SMOOTHNESS_WEIGHT
+                       * abs(float(cambio_giro))
+                       / config.MAX_ANGULAR_CHANGE_RAD_S)
+        if fallo:
+            recompensa -= config.FAILURE_PENALTY
         blob_perdido_demasiado_tiempo = (
             self.inicio_perdida_blob is not None
             and time.monotonic() - self.inicio_perdida_blob
