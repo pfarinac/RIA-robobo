@@ -2,12 +2,12 @@
 
 IMAGE_WIDTH_PX = 320
 IMAGE_HEIGHT_PX = 240
-BLOB_SIZE_MAX = 10000.0
+BLOB_SIZE_MAX = 1000.0
 TARGET_BLOB_SIZE_NORM = 0.2
-TOO_CLOSE_BLOB_SIZE_NORM = 0.4
+TOO_CLOSE_BLOB_SIZE_NORM = 0.35
 
 IR_SATURATION = 1000.0
-FRONT_IR_INDICES = (1, 2, 3)
+FRONT_IR_INDICES = (1, 2, 3, 4, 5)
 FRONT_IR_CONTACT_THRESHOLD = 0.85
 
 
@@ -35,12 +35,15 @@ TRAIN_EPISODES = 100
 EVAL_EPISODES = 5
 MAX_STEPS_PER_EPISODE = max(
     1, int(EPISODE_SECONDS / BLOB_PERIOD_S))
-# Recompensa
-FOLLOW_REWARD = 1.0          # máximo por paso si está centrado y a la distancia objetivo
-FOLLOW_SIGMA_X = 0.3         # anchura de la campana en error_x
-FOLLOW_SIGMA_SIZE = 0.08     # anchura de la campana en tamaño normalizado
-SMOOTHNESS_WEIGHT = 0.1      # penalización por cambio brusco de giro
-FAILURE_PENALTY = 30.0       # choque, demasiado cerca o blob perdido
-
-# Temporización del paso
-ACTION_SETTLE_S = 0.1        # tiempo mínimo entre la acción y la observación
+# Recompensa por paso (todas las magnitudes se infieren de la observación)
+ALIVE_REWARD = 0.2         # el blob está visible
+CENTER_WEIGHT = 0.5        # máximo del premio por centrado (error_x = 0)
+CENTER_SIGMA = 0.6         # anchura de la campana en error_x
+SIZE_WEIGHT = 0.3          # máximo del premio por tamaño (PROVISIONAL)
+SIZE_SIGMA = 0.1           # anchura de la campana en tamaño normalizado
+SMOOTHNESS_WEIGHT = 0.05   # penaliza |cambio de giro| / máximo por paso
+ZIGZAG_PENALTY = 0.3       # penaliza invertir el sentido del giro
+LOST_PENALTY = 0.2         # por paso con el blob perdido
+FAILURE_PENALTY = 30.0     # choque, demasiado cerca o blob perdido 3 s 
+ACTION_SETTLE_S = 0.2
+ANGULAR_PENALTY_WEIGHT = 0.05

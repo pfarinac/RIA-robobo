@@ -26,12 +26,15 @@ HIPER_SAC = dict(
 )
 
 
-def construir_algoritmo(env):
-    from stable_baselines3 import SAC
-
-    return SAC(
-        'MlpPolicy', env, verbose=1,
-        tensorboard_log=RUTA_LOGS, **HIPER_SAC)
+def construir_algoritmo(env, algoritmo="sac"):
+    if algoritmo.lower() == "ppo":
+        from stable_baselines3 import PPO
+        # Hiperparámetros base de ejemplo para PPO
+        return PPO('MlpPolicy', env, verbose=1, tensorboard_log=RUTA_LOGS,
+                   learning_rate=3e-4, n_steps=2048, batch_size=64, n_epochs=10, gamma=0.99)
+    else:
+        from stable_baselines3 import SAC
+        return SAC('MlpPolicy', env, verbose=1, tensorboard_log=RUTA_LOGS, **HIPER_SAC)
 
 
 def modo_calibrar():
@@ -107,7 +110,7 @@ def modo_entrenar(args):
     entorno_base = FollowCityEnv(usar_demostracion_inicial=True)
     env = Monitor(entorno_base)
     try:
-        modelo = construir_algoritmo(env)
+        modelo = construir_algoritmo(env, algoritmo=args.algo)
         callback = EpisodiosCallback(args.episodios_entrenamiento)
         pasos_limite = (
             args.episodios_entrenamiento
@@ -163,7 +166,7 @@ def modo_entrenar(args):
 
 
 def modo_evaluar(args):
-    from stable_baselines3 import SAC
+    from stable_baselines3 import SAC, PPO # Importamos ambos algoritmos
 
     ruta_zip = RUTA_MODELO + '.zip'
     if not os.path.isfile(ruta_zip):
@@ -173,13 +176,20 @@ def modo_evaluar(args):
 
     env = FollowCityEnv(usar_demostracion_inicial=False)
     try:
-        modelo = SAC.load(ruta_zip, env=env)
+        # Cargamos el modelo adecuado dependiendo del argumento
+        if args.algo.lower() == 'ppo':
+            modelo = PPO.load(ruta_zip, env=env)
+            titulo_eval = 'EVALUACIÓN DE LA POLÍTICA PPO'
+        else:
+            modelo = SAC.load(ruta_zip, env=env)
+            titulo_eval = 'EVALUACIÓN DE LA POLÍTICA SAC'
+            
         resumen(
             env,
             politica=lambda obs: modelo.predict(
                 obs, deterministic=True)[0],
             episodios=args.episodios,
-            titulo='EVALUACIÓN DE LA POLÍTICA SAC')
+            titulo=titulo_eval)
     finally:
         env.close()
 
@@ -249,6 +259,9 @@ def main():
         '--episodios', type=int,
         default=config.EVAL_EPISODES,
         help='episodios del modo --evaluar')
+    parser.add_argument(
+        '--algo', type=str, default='sac', choices=['sac', 'ppo'],
+        help='algoritmo de aprendizaje por refuerzo a utilizar (sac o ppo)')
     args = parser.parse_args()
 
     for nombre in (
