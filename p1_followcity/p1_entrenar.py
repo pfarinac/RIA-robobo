@@ -4,11 +4,12 @@
 import argparse
 import os
 import time
-
+import random
 import numpy as np
-
+import torch
 from follow_city_env import FollowCityEnv
 import follow_city_config as config
+from stable_baselines3.common.utils import set_random_seed
 
 
 RUTA_MODELO = 'p1_follow_city_sac'
@@ -24,17 +25,25 @@ HIPER_SAC = dict(
     train_freq=1,
     gradient_steps=1,
 )
+def fijar_semillas(semilla: int):
+    """Fija la semilla en todas las librerías para garantizar reproducibilidad."""
+    random.seed(semilla)
+    np.random.seed(semilla)
+    torch.manual_seed(semilla)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(semilla)
+    set_random_seed(semilla)
 
-
-def construir_algoritmo(env, algoritmo="sac"):
+def construir_algoritmo(env, algoritmo="sac", seed = 42):
+    #seed = int(seed)
     if algoritmo.lower() == "ppo":
         from stable_baselines3 import PPO
         # Hiperparámetros base de ejemplo para PPO
         return PPO('MlpPolicy', env, verbose=1, tensorboard_log=RUTA_LOGS,
-                   learning_rate=3e-4, n_steps=2048, batch_size=64, n_epochs=10, gamma=0.99)
+                   learning_rate=3e-4, n_steps=2048, batch_size=64, n_epochs=10, gamma=0.99, seed = seed)
     else:
         from stable_baselines3 import SAC
-        return SAC('MlpPolicy', env, verbose=1, tensorboard_log=RUTA_LOGS, **HIPER_SAC)
+        return SAC('MlpPolicy', env, verbose=1, tensorboard_log=RUTA_LOGS, **HIPER_SAC, seed = seed)
 
 
 def modo_calibrar():
@@ -106,7 +115,12 @@ def modo_entrenar(args):
                     self.recompensa_actual = 0.0
                     self.pasos_actual = 0
             return self.episodios_completados < self.episodios_objetivo
+        
+    fijar_semillas(args.seed)
 
+    nombre_exp = f"{args.algo}_{args.config}_seed{args.seed}"
+    dir_logs = os.path.join(RUTA_LOGS, nombre_exp)
+    os.makedirs(dir_logs, exist_ok=True)
     entorno_base = FollowCityEnv(usar_demostracion_inicial=True)
     env = Monitor(entorno_base)
     try:
@@ -167,7 +181,7 @@ def modo_entrenar(args):
 
 def modo_evaluar(args):
     from stable_baselines3 import SAC, PPO # Importamos ambos algoritmos
-
+    fijar_semillas(args.seed)
     ruta_zip = RUTA_MODELO + '.zip'
     if not os.path.isfile(ruta_zip):
         raise FileNotFoundError(
@@ -262,7 +276,12 @@ def main():
     parser.add_argument(
         '--algo', type=str, default='sac', choices=['sac', 'ppo'],
         help='algoritmo de aprendizaje por refuerzo a utilizar (sac o ppo)')
+    parser.add_argument(
+        '--seed', type=int, default = 42,
+        help='Configuración de la semilla aleatoria para la reproductibilidad (por defecto 42)'
+    )
     args = parser.parse_args()
+
 
     for nombre in (
             'episodios_entrenamiento',
