@@ -118,7 +118,7 @@ def modo_entrenar(args):
         
     fijar_semillas(args.seed)
 
-    nombre_exp = f"{args.algo}_{args.config}_seed{args.seed}"
+    nombre_exp = f"{args.algo}_seed{args.seed}"
     dir_logs = os.path.join(RUTA_LOGS, nombre_exp)
     os.makedirs(dir_logs, exist_ok=True)
     entorno_base = FollowCityEnv(usar_demostracion_inicial=True)
