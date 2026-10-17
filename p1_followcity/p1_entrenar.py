@@ -12,7 +12,6 @@ import follow_city_config as config
 from stable_baselines3.common.utils import set_random_seed
 
 
-RUTA_MODELO = 'p1_follow_city_sac'
 RUTA_LOGS = 'p1_follow_city_logs'
 
 HIPER_SAC = dict(
@@ -25,6 +24,24 @@ HIPER_SAC = dict(
     train_freq=1,
     gradient_steps=1,
 )
+
+HIPER_PPO = dict(
+    learning_rate=3e-4,
+    n_steps=512,
+    batch_size=64,
+    n_epochs=10,
+    gamma=0.99,
+    gae_lambda=0.95,
+    clip_range=0.2,
+    ent_coef=0.0,
+)
+
+
+def ruta_modelo(algoritmo):
+    """Devuelve una ruta distinta para cada tipo de política."""
+    return 'p1_follow_city_{}'.format(algoritmo.lower())
+
+
 def fijar_semillas(semilla: int):
     """Fija la semilla en todas las librerías para garantizar reproducibilidad."""
     random.seed(semilla)
@@ -34,16 +51,15 @@ def fijar_semillas(semilla: int):
         torch.cuda.manual_seed_all(semilla)
     set_random_seed(semilla)
 
-def construir_algoritmo(env, algoritmo="sac", seed = 42):
-    #seed = int(seed)
+def construir_algoritmo(env, algoritmo="sac", seed=42, tensorboard_log=None):
     if algoritmo.lower() == "ppo":
         from stable_baselines3 import PPO
-        # Hiperparámetros base de ejemplo para PPO
-        return PPO('MlpPolicy', env, verbose=1, tensorboard_log=RUTA_LOGS,
-                   learning_rate=3e-4, n_steps=2048, batch_size=64, n_epochs=10, gamma=0.99, seed = seed)
+        return PPO('MlpPolicy', env, verbose=1,
+                   tensorboard_log=tensorboard_log, **HIPER_PPO, seed=seed)
     else:
         from stable_baselines3 import SAC
-        return SAC('MlpPolicy', env, verbose=1, tensorboard_log=RUTA_LOGS, **HIPER_SAC, seed = seed)
+        return SAC('MlpPolicy', env, verbose=1,
+                   tensorboard_log=tensorboard_log, **HIPER_SAC, seed=seed)
 
 
 def modo_calibrar():
@@ -89,10 +105,6 @@ def modo_entrenar(args):
             for indice, (recompensa, terminado) in enumerate(zip(
                     self.locals['rewards'], self.locals['dones'])):
                 info = self.locals['infos'][indice]
-                accion_ejecutada = info.get('_accion_ejecutada')
-                if accion_ejecutada is not None:
-                    self.locals['buffer_actions'][indice] = np.asarray(
-                        accion_ejecutada, dtype=np.float32)
                 self.recompensa_actual += float(recompensa)
                 self.pasos_actual += 1
                 if terminado:
@@ -121,18 +133,24 @@ def modo_entrenar(args):
     nombre_exp = f"{args.algo}_seed{args.seed}"
     dir_logs = os.path.join(RUTA_LOGS, nombre_exp)
     os.makedirs(dir_logs, exist_ok=True)
-    entorno_base = FollowCityEnv(usar_demostracion_inicial=True)
+    entorno_base = FollowCityEnv(
+        usar_demostracion_inicial=args.algo.lower() == 'sac')
     env = Monitor(entorno_base)
     try:
-        modelo = construir_algoritmo(env, algoritmo=args.algo)
+        modelo = construir_algoritmo(
+            env,
+            algoritmo=args.algo,
+            seed=args.seed,
+            tensorboard_log=dir_logs)
         callback = EpisodiosCallback(args.episodios_entrenamiento)
         pasos_limite = (
             args.episodios_entrenamiento
             * config.MAX_STEPS_PER_EPISODE)
         print(
-            'Entrenando SAC hasta completar {} episodios '
+            'Entrenando {} hasta completar {} episodios '
             '(límite de seguridad: {} pasos).'
-            .format(args.episodios_entrenamiento, pasos_limite))
+            .format(args.algo.upper(), args.episodios_entrenamiento,
+                    pasos_limite))
         inicio = time.time()
         error_sensor = None
         try:
@@ -155,8 +173,9 @@ def modo_entrenar(args):
             print('\nEntrenamiento interrumpido por pérdida de datos ROS: {}'
                   .format(mensaje))
 
-        modelo.save(RUTA_MODELO)
-        print('Modelo guardado en {}.zip'.format(RUTA_MODELO))
+        nombre_modelo = ruta_modelo(args.algo)
+        modelo.save(nombre_modelo)
+        print('Modelo guardado en {}.zip'.format(nombre_modelo))
         print('Episodios completados: {}. Duración: {:.1f} min.'
               .format(
                   callback.episodios_completados,
@@ -180,13 +199,14 @@ def modo_entrenar(args):
 
 
 def modo_evaluar(args):
-    from stable_baselines3 import SAC, PPO # Importamos ambos algoritmos
+    from stable_baselines3 import SAC, PPO
     fijar_semillas(args.seed)
-    ruta_zip = RUTA_MODELO + '.zip'
+    nombre_modelo = ruta_modelo(args.algo)
+    ruta_zip = nombre_modelo + '.zip'
     if not os.path.isfile(ruta_zip):
         raise FileNotFoundError(
             'No existe {}.zip; ejecuta primero --entrenar.'.format(
-                RUTA_MODELO))
+                nombre_modelo))
 
     env = FollowCityEnv(usar_demostracion_inicial=False)
     try:
@@ -249,7 +269,7 @@ def resumen(env, politica, episodios, titulo):
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Seguimiento del guía en Follow City con SAC.')
+        description='Seguimiento del guía en Follow City con SAC o PPO.')
     modos = parser.add_mutually_exclusive_group(required=True)
     modos.add_argument(
         '--calibrar', action='store_true',
