@@ -186,6 +186,8 @@ def modo_entrenar(args):
             return
         if callback.episodios_completados:
             entorno_base.usar_demostracion_inicial = False
+            entorno_base.pasos_max = max(1, int(
+                config.EVAL_EPISODE_SECONDS / config.BLOB_PERIOD_S))
             resumen(
                 env,
                 politica=lambda obs: modelo.predict(
@@ -208,7 +210,9 @@ def modo_evaluar(args):
             'No existe {}.zip; ejecuta primero --entrenar.'.format(
                 nombre_modelo))
 
-    env = FollowCityEnv(usar_demostracion_inicial=False)
+    env = FollowCityEnv(
+        usar_demostracion_inicial=False,
+        episode_seconds=config.EVAL_EPISODE_SECONDS)
     try:
         # Cargamos el modelo adecuado dependiendo del argumento
         if args.algo.lower() == 'ppo':

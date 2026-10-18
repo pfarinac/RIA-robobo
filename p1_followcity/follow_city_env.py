@@ -44,7 +44,9 @@ class FollowCityEnv(gym.Env):
 
     metadata = {'render_modes': []}
 
-    def __init__(self, verbose=False, usar_demostracion_inicial=True):
+    def __init__(
+            self, verbose=False, usar_demostracion_inicial=True,
+            episode_seconds=None):
         super().__init__()
         if BlobArray is None:
             raise ImportError('No se encuentra robobo_ros2_interfaces/BlobArray.')
@@ -101,8 +103,10 @@ class FollowCityEnv(gym.Env):
             dtype=np.float32)
         self.action_space = spaces.Box(
             low=-1.0, high=1.0, shape=(2,), dtype=np.float32)
+        if episode_seconds is None:
+            episode_seconds = config.EPISODE_SECONDS
         self.pasos_max = max(1, int(
-            config.EPISODE_SECONDS / config.BLOB_PERIOD_S))
+            episode_seconds / config.BLOB_PERIOD_S))
         self.pasos = 0
         self.inicio_perdida_blob = None
         self.ultima_posicion_blob_x = None
