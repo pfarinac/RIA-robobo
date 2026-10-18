@@ -1,0 +1,56 @@
+politica,config,episodio,desenlace,detalle,duracion_s,pasos,archivo_pasos
+"SAC, semilla 2026",C1,1,completado,,120.18,300,pasos_SACsemilla2026_C1_ep1_202448.csv
+"SAC, semilla 2026",C1,2,completado,,120.17,300,pasos_SACsemilla2026_C1_ep2_202656.csv
+"SAC, semilla 2026",C1,3,completado,,120.18,300,pasos_SACsemilla2026_C1_ep3_202904.csv
+"SAC, semilla 2026",C1,4,completado,,120.17,300,pasos_SACsemilla2026_C1_ep4_203112.csv
+"SAC, semilla 2026",C1,5,completado,,120.4,301,pasos_SACsemilla2026_C1_ep5_203320.csv
+"SAC, semilla 2026",C2,1,completado,,120.38,300,pasos_SACsemilla2026_C2_ep1_204202.csv
+"SAC, semilla 2026",C2,2,completado,,120.17,300,pasos_SACsemilla2026_C2_ep2_204410.csv
+"SAC, semilla 2026",C2,3,completado,,120.38,301,pasos_SACsemilla2026_C2_ep3_204618.csv
+"SAC, semilla 2026",C2,4,completado,,120.18,300,pasos_SACsemilla2026_C2_ep4_204826.csv
+"SAC, semilla 2026",C2,5,completado,,120.17,300,pasos_SACsemilla2026_C2_ep5_205034.csv
+"SAC, semilla 2026",C3,1,completado,,120.3,300,pasos_SACsemilla2026_C3_ep1_205412.csv
+"SAC, semilla 2026",C3,2,completado,,120.18,300,pasos_SACsemilla2026_C3_ep2_205620.csv
+"SAC, semilla 2026",C3,3,completado,,120.18,300,pasos_SACsemilla2026_C3_ep3_205828.csv
+"SAC, semilla 2026",C3,4,guía perdido,sin detección > 3 s,45.92,114,pasos_SACsemilla2026_C3_ep4_210036.csv
+"SAC, semilla 2026",C3,5,completado,,120.17,300,pasos_SACsemilla2026_C3_ep5_210130.csv
+"SAC, semilla 2027",C1,1,completado,,120.38,300,pasos_SACsemilla2027_C1_ep1_211520.csv
+Aleatoria,C1,1,guía perdido,sin detección > 3 s,5.43,13,pasos_Aleatoria_C1_ep1_212034.csv
+Aleatoria,C1,2,guía perdido,sin detección > 3 s,12.31,30,pasos_Aleatoria_C1_ep2_212047.csv
+Aleatoria,C1,3,guía perdido,sin detección > 3 s,4.7,11,pasos_Aleatoria_C1_ep3_212107.csv
+Aleatoria,C1,4,guía perdido,sin detección > 3 s,6.31,15,pasos_Aleatoria_C1_ep4_212120.csv
+Aleatoria,C1,5,guía perdido,sin detección > 3 s,6.7,16,pasos_Aleatoria_C1_ep5_212134.csv
+Aleatoria,C2,1,guía perdido,sin detección > 3 s,5.51,13,pasos_Aleatoria_C2_ep1_212413.csv
+Aleatoria,C2,2,guía perdido,sin detección > 3 s,12.31,30,pasos_Aleatoria_C2_ep2_212426.csv
+Aleatoria,C2,3,guía perdido,sin detección > 3 s,4.92,12,pasos_Aleatoria_C2_ep3_212446.csv
+Aleatoria,C2,4,guía perdido,sin detección > 3 s,4.31,10,pasos_Aleatoria_C2_ep4_212459.csv
+Aleatoria,C2,5,guía perdido,sin detección > 3 s,7.11,17,pasos_Aleatoria_C2_ep5_212511.csv
+Aleatoria,C3,1,guía perdido,sin detección > 3 s,5.83,14,pasos_Aleatoria_C3_ep1_213113.csv
+Aleatoria,C3,2,guía perdido,sin detección > 3 s,12.31,30,pasos_Aleatoria_C3_ep2_213127.csv
+Aleatoria,C3,3,guía perdido,sin detección > 3 s,4.31,10,pasos_Aleatoria_C3_ep3_213147.csv
+Aleatoria,C3,4,guía perdido,sin detección > 3 s,6.31,15,pasos_Aleatoria_C3_ep4_213159.csv
+Aleatoria,C3,5,guía perdido,sin detección > 3 s,6.71,16,pasos_Aleatoria_C3_ep5_213213.csv
+sac,C1,1,guía perdido,sin detección > 3 s,7.31,17,pasos_sac_C1_ep1_215256.csv
+sac,C1,2,guía perdido,sin detección > 3 s,7.11,17,pasos_sac_C1_ep2_215311.csv
+sac,C1,3,guía perdido,sin detección > 3 s,7.51,18,pasos_sac_C1_ep3_215326.csv
+sac,C1,4,guía perdido,sin detección > 3 s,7.11,17,pasos_sac_C1_ep4_215341.csv
+sac,C1,1,guía perdido,sin detección > 3 s,6.91,16,pasos_sac_C1_ep1_215421.csv
+sac,C1,2,guía perdido,sin detección > 3 s,6.71,16,pasos_sac_C1_ep2_215436.csv
+sac,C1,3,guía perdido,sin detección > 3 s,6.71,16,pasos_sac_C1_ep3_215450.csv
+sac,C1,4,guía perdido,sin detección > 3 s,6.71,16,pasos_sac_C1_ep4_215505.csv
+sac,C1,5,guía perdido,sin detección > 3 s,6.71,16,pasos_sac_C1_ep5_215519.csv
+sac,C1,1,completado,,120.38,300,pasos_sac_C1_ep1_220917.csv
+sac,C1,2,completado,,120.18,300,pasos_sac_C1_ep2_221125.csv
+sac,C1,3,guía perdido,sin detección > 3 s,45.91,114,pasos_sac_C1_ep3_221333.csv
+sac,C1,4,completado,,120.17,300,pasos_sac_C1_ep4_221427.csv
+sac,C1,5,completado,,120.17,300,pasos_sac_C1_ep5_221635.csv
+sac,C2,1,completado,,120.37,300,pasos_sac_C2_ep1_221916.csv
+sac,C2,2,completado,,120.17,300,pasos_sac_C2_ep2_222124.csv
+sac,C2,3,completado,,120.17,300,pasos_sac_C2_ep3_222332.csv
+sac,C2,4,completado,,120.17,300,pasos_sac_C2_ep4_222540.csv
+sac,C2,5,completado,,120.18,300,pasos_sac_C2_ep5_222748.csv
+sac,C3,1,completado,,120.3,300,pasos_sac_C3_ep1_223128.csv
+sac,C3,2,completado,,120.17,300,pasos_sac_C3_ep2_223336.csv
+sac,C3,3,completado,,120.18,300,pasos_sac_C3_ep3_223544.csv
+sac,C3,4,guía perdido,sin detección > 3 s,116.32,290,pasos_sac_C3_ep4_223752.csv
+sac,C3,5,completado,,120.38,301,pasos_sac_C3_ep5_223956.csv
