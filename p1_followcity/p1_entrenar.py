@@ -203,12 +203,10 @@ def modo_entrenar(args):
 def modo_evaluar(args):
     from stable_baselines3 import SAC, PPO
     fijar_semillas(args.seed)
-    nombre_modelo = ruta_modelo(args.algo)
-    ruta_zip = nombre_modelo + '.zip'
+    ruta_zip = args.modelo or (ruta_modelo(args.algo) + '.zip')
     if not os.path.isfile(ruta_zip):
         raise FileNotFoundError(
-            'No existe {}.zip; ejecuta primero --entrenar.'.format(
-                nombre_modelo))
+            'No existe el archivo de modelo: {}'.format(ruta_zip))
 
     env = FollowCityEnv(
         usar_demostracion_inicial=False,
@@ -300,6 +298,10 @@ def main():
     parser.add_argument(
         '--algo', type=str, default='sac', choices=['sac', 'ppo'],
         help='algoritmo de aprendizaje por refuerzo a utilizar (sac o ppo)')
+    parser.add_argument(
+        '--modelo', type=str, default=None,
+        help='ruta del archivo .zip que se evaluará; por defecto se usa '
+        'p1_follow_city_<algo>.zip')
     parser.add_argument(
         '--seed', type=int, default = 42,
         help='Configuración de la semilla aleatoria para la reproductibilidad (por defecto 42)'
