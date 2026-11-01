@@ -181,10 +181,7 @@ class FollowCityEnv(gym.Env):
 
     def _reiniciar_simulacion(self):
         futuro = self.cli_reset.call_async(ResetSimulation.Request())
-        rclpy.spin_until_future_complete(self.nodo, futuro, timeout_sec=config.RESET_SIM_TIMEOUT_S)
-        respuesta = futuro.result() if futuro.done() else None
-        if respuesta is None or not respuesta.success:
-            raise RuntimeError('El reinicio de la simulación ha fallado: sin respuesta o rechazado.')
+        rclpy.spin_until_future_complete(self.nodo, futuro, timeout_sec=config.SENSOR_TIMEOUT_S)
         time.sleep(0.5)
 
     def _poner_tilt_inicial(self):
