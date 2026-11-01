@@ -9,7 +9,6 @@ import statistics
 import time
 import numpy as np
 import neat
-import matplotlib.pyplot as plt
 import sys
 import shutil
 
@@ -109,6 +108,7 @@ def eval_genomes(genomas, cfg):
 
 
 def dibujar_red(genoma, config_neat, nombres_entrada, nombres_salida, ruta):
+    import matplotlib.pyplot as plt
     """Dibuja la topología de la red (según el Anexo)."""
     gc = config_neat.genome_config
     entradas, salidas = list(gc.input_keys), list(gc.output_keys)
