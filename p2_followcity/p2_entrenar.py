@@ -198,7 +198,7 @@ def modo_evaluar(args):
         return
         
     cfg = neat.Config(neat.DefaultGenome, neat.DefaultReproduction,
-                      neat.DefaultSpeciesSet, neat.DefaultStagnation, "args.config")
+                      neat.DefaultSpeciesSet, neat.DefaultStagnation, args.config)
                       
     with open(args.modelo, "rb") as f:
         genoma = pickle.load(f)
