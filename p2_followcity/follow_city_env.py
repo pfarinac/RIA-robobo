@@ -282,18 +282,16 @@ class FollowCityEnv(gym.Env):
         # Componentes de calidad para la función externa
         r_centro = config.CENTER_WEIGHT * np.exp(-(float(obs[1]) / config.CENTER_SIGMA) ** 2)
         # En follow_city_env.py
-        tamano_actual = float(obs[3])
+        
         if obs[0]:
-            if tamano_actual <= config.TARGET_BLOB_SIZE_NORM:
-                # Si está lejos o en el punto ideal, premio normal (campana de Gauss)
-                r_tamano = config.SIZE_WEIGHT * np.exp(-((tamano_actual - config.TARGET_BLOB_SIZE_NORM) / config.SIZE_SIGMA) ** 2)
+            t = float(obs[3])
+            if t <= config.TARGET_BLOB_SIZE_NORM:
+                r_tamano = config.SIZE_WEIGHT * np.exp(-((t - config.TARGET_BLOB_SIZE_NORM) / config.SIZE_SIGMA) ** 2)
             else:
-                # Si está más cerca del ideal, penalización lineal o cuadrática muy agresiva
-                # Si se acerca a 0.35, el valor se hunde.
-                penalizacion = ((tamano_actual - config.TARGET_BLOB_SIZE_NORM) / (config.TOO_CLOSE_BLOB_SIZE_NORM - config.TARGET_BLOB_SIZE_NORM)) ** 2
-                r_tamano = - (config.SIZE_WEIGHT * 2.0) * penalizacion 
+                x = min((t - config.TARGET_BLOB_SIZE_NORM) / (config.TOO_CLOSE_BLOB_SIZE_NORM - config.TARGET_BLOB_SIZE_NORM), 1.0)
+                r_tamano = config.SIZE_WEIGHT * (1.0 - 3.0 * x ** 2)   # 0,3 en el objetivo, -0,6 al llegar al umbral
         else:
-            r_tamano = 0.0 if obs[0] else 0.0
+            r_tamano = 0.0
         r_suavidad = -(config.SMOOTHNESS_WEIGHT * abs(float(cambio_giro)) / config.MAX_ANGULAR_CHANGE_RAD_S)
 
         info = {

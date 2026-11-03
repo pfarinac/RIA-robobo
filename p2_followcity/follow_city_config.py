@@ -55,12 +55,12 @@ ACTION_SETTLE_S = 0.2
 # ------------------------------------------------------------------
 ALIVE_REWARD = 0.2         
 CENTER_WEIGHT = 0.5        
-CENTER_SIGMA = 0.2      
+CENTER_SIGMA = 0.4     
 SIZE_WEIGHT = 0.3          
 SIZE_SIGMA = 0.1           
-SMOOTHNESS_WEIGHT = 0.5   
-ZIGZAG_PENALTY = 1.0       
-LOST_PENALTY = 1.0        
+SMOOTHNESS_WEIGHT = 0.1  
+ZIGZAG_PENALTY = 0.4       
+LOST_PENALTY = 0.2      
 FAILURE_PENALTY = 30.0     
 ANGULAR_PENALTY_WEIGHT = 0.05
 
