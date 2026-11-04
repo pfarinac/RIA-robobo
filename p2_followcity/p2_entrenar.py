@@ -113,7 +113,7 @@ def calcular_calidad(registro, pasos_max):
 
         total += recompensa - penalizacion_cercania - penalizacion_giro
         w = info['velocidad_angular']
-        if w * w_prev < 0:                       # el giro cambia de sentido
+        if w * w_prev < 0 and min(abs(w), abs(w_prev)) > 0.05:                      # el giro cambia de sentido
             total -= config.ZIGZAG_PENALTY * 0.1
         w_prev = w
     calidad = 100.0 * total / pasos_max
