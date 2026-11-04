@@ -70,8 +70,8 @@ class FollowCityEnv(gym.Env):
 
         # Espacios
         self.observation_space = spaces.Box(
-            low=np.array([0.0, -1.0, -1.0, 0.0, -1.0, 0.0, -1.0, -1.0], dtype=np.float32),
-            high=np.ones(8, dtype=np.float32),
+            low=np.array([0.0, -1.0, -1.0, 0.0, -1.0, 0.0], dtype=np.float32),
+            high=np.ones(6, dtype=np.float32),
             dtype=np.float32)
         self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(2,), dtype=np.float32)
 
@@ -140,12 +140,6 @@ class FollowCityEnv(gym.Env):
         self._observacion()
 
     def _observacion(self):
-        w_norm = np.clip(self.giro_anterior / config.MAX_ANGULAR_SPEED_RAD_S, -1.0, 1.0)
-        v_norm = 0.0
-        rango_v = config.MAX_LINEAR_SPEED_M_S - config.MIN_LINEAR_SPEED_M_S
-        if rango_v > 0:
-            v_norm = np.clip((self.velocidad_lineal_anterior - config.MIN_LINEAR_SPEED_M_S) / rango_v, 0.0, 1.0)
-
         blob = self._blob_verde()
         if blob is None:
             ahora = time.monotonic()
@@ -155,7 +149,7 @@ class FollowCityEnv(gym.Env):
             if self.inicio_perdida_blob is not None:
                 tiempo_perdido = np.clip((ahora - self.inicio_perdida_blob) / config.LOST_BLOB_SECONDS, 0.0, 1.0)
             ultima_posicion_x = self.ultima_posicion_blob_x if self.ultima_posicion_blob_x is not None else 0.0
-            return np.array([0.0, 0.0, 0.0, 0.0, ultima_posicion_x, tiempo_perdido, v_norm, w_norm], dtype=np.float32)
+            return np.array([0.0, 0.0, 0.0, 0.0, ultima_posicion_x, tiempo_perdido], dtype=np.float32)
 
         error_x = np.clip((float(blob.x) - config.BLOB_COORD_MAX / 2) / (config.BLOB_COORD_MAX / 2), -1.0, 1.0)
         error_y = np.clip((float(blob.y) - config.BLOB_COORD_MAX / 2) / (config.BLOB_COORD_MAX / 2), -1.0, 1.0)
@@ -166,7 +160,7 @@ class FollowCityEnv(gym.Env):
         self.instante_ultima_deteccion_blob = time.monotonic()
         self.inicio_perdida_blob = None
 
-        return np.array([1.0, error_x, error_y, tamano, error_x, 0.0, v_norm, w_norm], dtype=np.float32)
+        return np.array([1.0, error_x, error_y, tamano, error_x, 0.0], dtype=np.float32)
 
     def _publicar_velocidad(self, lineal, angular):
         mensaje = Twist()
@@ -279,22 +273,18 @@ class FollowCityEnv(gym.Env):
         if terminated or truncated:
             self._detener()
 
-        # Componentes de calidad para la función externa
-        r_centro = config.CENTER_WEIGHT * np.exp(-(float(obs[1]) / config.CENTER_SIGMA) ** 2)
-        # En follow_city_env.py
+        # Componentes de calidad para la función externa. El tamaño del blob
+        # es el proxy de separación disponible en este simulador.
+        g_centro = np.exp(-(float(obs[1]) / config.CENTER_SIGMA) ** 2)
         tamano_actual = float(obs[3])
-        if obs[0]:
-            if tamano_actual <= config.TARGET_BLOB_SIZE_NORM:
-                # Si está lejos o en el punto ideal, premio normal (campana de Gauss)
-                r_tamano = config.SIZE_WEIGHT * np.exp(-((tamano_actual - config.TARGET_BLOB_SIZE_NORM) / config.SIZE_SIGMA) ** 2)
-            else:
-                # Si está más cerca del ideal, penalización lineal o cuadrática muy agresiva
-                # Si se acerca a 0.35, el valor se hunde.
-                penalizacion = ((tamano_actual - config.TARGET_BLOB_SIZE_NORM) / (config.TOO_CLOSE_BLOB_SIZE_NORM - config.TARGET_BLOB_SIZE_NORM)) ** 2
-                r_tamano = - (config.SIZE_WEIGHT * 2.0) * penalizacion 
-        else:
-            r_tamano = 0.0 if obs[0] else 0.0
-        r_suavidad = -(config.SMOOTHNESS_WEIGHT * abs(float(cambio_giro)) / config.MAX_ANGULAR_CHANGE_RAD_S)
+        g_dist = np.clip(tamano_actual / config.TARGET_BLOB_SIZE_NORM, 0.0, 1.0)
+        r_centro = 0.3 * g_centro
+        r_tamano = 0.6 * g_dist
+        r_suavidad = -(
+            config.ANGULAR_PENALTY_WEIGHT
+            * abs(float(self.giro_anterior))
+            / config.MAX_ANGULAR_SPEED_RAD_S
+        )
 
         info = {
             'visible': bool(obs[0]),

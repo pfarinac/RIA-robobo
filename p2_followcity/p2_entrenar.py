@@ -38,7 +38,8 @@ class RegistroGeneracion(neat.reporting.BaseReporter):
             with open(ruta_csv, "w", newline="") as f:
                 csv.writer(f).writerow(self.CAMPOS)
                 
-        self.inicio = dict(CONTADOR)
+        # Para que no se pierdan pasos de una generación interrumpida al reanudar
+        self.inicio = {"evaluaciones": 0, "pasos": 0}
         self.t0, self.gen = time.time(), 0
 
     def start_generation(self, generation):
@@ -47,34 +48,73 @@ class RegistroGeneracion(neat.reporting.BaseReporter):
     def post_evaluate(self, config, population, species, best_genome):
         cal = [g.fitness for g in population.values()]
         nodos, conexiones = len(best_genome.nodes), len([c for c in best_genome.connections.values() if c.enabled])
+        distancias = [
+            genoma_a.distance(genoma_b, config.genome_config)
+            for indice, genoma_a in enumerate(population.values())
+            for genoma_b in list(population.values())[indice + 1:]
+        ]
+        if distancias:
+            p25, mediana, p75 = np.percentile(distancias, [25, 50, 75])
+            print(
+                f"Distancias de compatibilidad: "
+                f"p25={p25:.3f}, mediana={mediana:.3f}, p75={p75:.3f}"
+            )
+            
+        evals_totales = int(self.base["evaluaciones"] + CONTADOR["evaluaciones"] - self.inicio["evaluaciones"])
+        pasos_totales = int(self.base["pasos"] + CONTADOR["pasos"] - self.inicio["pasos"])
+        segundos_totales = round(self.base["segundos"] + time.time() - self.t0, 1)
+
         fila = [
             self.gen, best_genome.fitness,
             statistics.mean(cal), statistics.pstdev(cal),
             len(species.species), nodos, conexiones,
-            int(self.base["evaluaciones"] + CONTADOR["evaluaciones"] - self.inicio["evaluaciones"]),
-            int(self.base["pasos"] + CONTADOR["pasos"] - self.inicio["pasos"]),
-            round(self.base["segundos"] + time.time() - self.t0, 1)
+            evals_totales, pasos_totales, segundos_totales
         ]
+        
         with open(self.ruta, "a", newline="") as f:
             csv.writer(f).writerow(fila)
             
         ruta = os.path.join(self.carpeta, f"mejor_gen_{self.gen:03d}.pkl")
         with open(ruta, "wb") as f:
             pickle.dump(best_genome, f)
+            
+        self.base["evaluaciones"] = evals_totales
+        self.base["pasos"] = pasos_totales
+        self.base["segundos"] = segundos_totales
+        self.inicio = dict(CONTADOR)
+        self.t0 = time.time()
 
 
 def calcular_calidad(registro, pasos_max):
-    """Calidad en escala ~0-100. Mixta: suma por paso + penalización si hay fallo."""
+    """Calcula una calidad en escala ~0-100 priorizando la distancia al objetivo."""
     total, w_prev = 0.0, 0.0
     for info in registro:
-        if info['visible']:
-            total += config.ALIVE_REWARD + info['r_centro'] + info['r_tamano']
-        else:
-            total -= config.LOST_PENALTY
-        total += info['r_suavidad']
+        visible = float(info['visible'])
+        g_centro = np.exp(-(float(info['error_x']) / config.CENTER_SIGMA) ** 2)
+
+        # El tamaño del blob es el proxy de separación disponible en este simulador.
+        # Crece de forma continua desde lejos hasta el tamaño objetivo.
+        tamano = float(info['tamano_norm'])
+        g_dist = np.clip(tamano / config.TARGET_BLOB_SIZE_NORM, 0.0, 1.0)
+        recompensa = visible * (0.1 + 0.3 * g_centro + 0.6 * g_dist)
+
+        # Penalización creciente al acercarse al umbral de choque.
+        exceso = max(
+            0.0,
+            (tamano - config.TARGET_BLOB_SIZE_NORM)
+            / (config.TOO_CLOSE_BLOB_SIZE_NORM - config.TARGET_BLOB_SIZE_NORM),
+        )
+        penalizacion_cercania = config.CLOSE_BLOB_PENALTY * exceso ** 2
+        penalizacion_giro = (
+            config.ANGULAR_PENALTY_WEIGHT
+            * abs(float(info['velocidad_angular']))
+            / config.MAX_ANGULAR_SPEED_RAD_S
+        )
+
+        total += recompensa - penalizacion_cercania - penalizacion_giro
         w = info['velocidad_angular']
         if w * w_prev < 0:                       # el giro cambia de sentido
-            total -= config.ZIGZAG_PENALTY
+            total -= config.ZIGZAG_PENALTY * 0.1
         w_prev = w
     calidad = 100.0 * total / pasos_max
     fallo = bool(registro) and registro[-1].get('motivo_fin') not in (None, 'duración máxima')
@@ -151,6 +191,14 @@ def dibujar_red(genoma, config_neat, nombres_entrada, nombres_salida, ruta):
 
 def modo_entrenar(args):
     global ENTORNO_GLOBAL
+    
+    ruta_csv = os.path.join(args.carpeta, "evolucion.csv")
+    if not args.checkpoint and os.path.exists(ruta_csv):
+        print(f"\n[ERROR] La carpeta '{args.carpeta}' ya contiene un archivo evolucion.csv.")
+        print("Lanzar una evolución nueva aquí mezclaría los datos o los sobreescribiría.")
+        print("Por favor, añade --checkpoint para reanudar, o indica una nueva --carpeta.\n")
+        sys.exit(1)
+        
     carpeta_chk = os.path.join(args.carpeta, "chk")
     os.makedirs(carpeta_chk, exist_ok=True)
 
@@ -169,7 +217,7 @@ def modo_entrenar(args):
     poblacion.add_reporter(neat.Checkpointer(
         generation_interval=1, filename_prefix=os.path.join(carpeta_chk, "p2-")))
     poblacion.add_reporter(RegistroGeneracion(
-        os.path.join(args.carpeta, "evolucion.csv"),
+        ruta_csv,
         os.path.join(args.carpeta, "genomas")))
 
     ENTORNO_GLOBAL = FollowCityEnv(episode_seconds=config.EPISODE_SECONDS)
@@ -221,7 +269,7 @@ def modo_evaluar(args):
         print(f"Episodio finalizado en {pasos} pasos. Motivo: {motivo}")
         
         if args.dibujar:
-            nombres_in = ["visible", "err_x", "err_y", "tam", "last_x", "t_perdido", "v_ant", "w_ant"]
+            nombres_in = ["visible", "err_x", "err_y", "tam", "last_x", "t_perdido"]
             nombres_out = ["v_lineal", "w_angular"]
             dibujar_red(genoma, cfg, nombres_in, nombres_out, "topologia_red.png")
             

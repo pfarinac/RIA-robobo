@@ -9,10 +9,14 @@ BLOB_SIZE_MAX = 1000.0
 TARGET_BLOB_SIZE_NORM = 0.2
 TOO_CLOSE_BLOB_SIZE_NORM = 0.35
 
+# Nuevas constantes P2
+BLOB_COORD_MAX = 100.0        # el detector entrega x e y en 0-100, no en píxeles
+
 # ------------------------------------------------------------------
 # Infrarrojos
 # ------------------------------------------------------------------
 IR_SATURATION = 1000.0
+# Se mantienen (1, 2, 3, 4, 5) porque 0 provoca terminaciones por choque trasero/esquina.
 FRONT_IR_INDICES = (1, 2, 3, 4, 5)
 FRONT_IR_CONTACT_THRESHOLD = 0.85
 
@@ -39,35 +43,24 @@ MAX_ANGULAR_CHANGE_RAD_S = 0.15
 # ------------------------------------------------------------------
 CONTROL_PERIOD_S = 0.1
 BLOB_PERIOD_S = 0.2
+REAL_STEP_S = 0.4             # duración real de un paso (espera 0,2 s + mensaje nuevo a 5 Hz)
 
 # Duración nominal de los episodios (más cortos para evolución, largos para evaluación)
-EPISODE_SECONDS = 30.0
+EPISODE_SECONDS = 20.0        # Antes 30
 EVAL_EPISODE_SECONDS = 120.0
 
 LOST_BLOB_SECONDS = 3.0
 SENSOR_TIMEOUT_S = 7.0
 RESET_SENSOR_TIMEOUT_S = 10.0
+RESET_SIM_TIMEOUT_S = 10.0
 RESET_ATTEMPTS = 2
 ACTION_SETTLE_S = 0.2
 
 # ------------------------------------------------------------------
 # Coeficientes para el cálculo de la Calidad (Fitness)
 # ------------------------------------------------------------------
-ALIVE_REWARD = 0.2         
-CENTER_WEIGHT = 0.5        
-CENTER_SIGMA = 0.2      
-SIZE_WEIGHT = 0.3          
-SIZE_SIGMA = 0.1           
-SMOOTHNESS_WEIGHT = 0.5   
-ZIGZAG_PENALTY = 1.0       
-LOST_PENALTY = 1.0        
-FAILURE_PENALTY = 30.0     
+CENTER_SIGMA = 0.2
+CLOSE_BLOB_PENALTY = 1.0
+ZIGZAG_PENALTY = 1.0
 ANGULAR_PENALTY_WEIGHT = 0.05
-
-#Nuevas constantes:
-BLOB_COORD_MAX = 100.0        # el detector entrega x e y en 0-100, no en píxeles
-REAL_STEP_S = 0.4             # duración real de un paso (espera 0,2 s + mensaje nuevo a 5 Hz)
-EPISODE_SECONDS = 20.0        # antes 30
-RESET_SIM_TIMEOUT_S = 10.0
-FRONT_IR_INDICES = (0, 1, 2, 3, 4)
 FAILURE_PENALTY_CAL = 20.0    # penalización por fallo, en la escala 0-100 de la calidad
