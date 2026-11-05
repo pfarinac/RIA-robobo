@@ -70,8 +70,8 @@ class FollowCityEnv(gym.Env):
 
         # Espacios
         self.observation_space = spaces.Box(
-            low=np.array([0.0, -1.0, -1.0, 0.0, -1.0, 0.0], dtype=np.float32),
-            high=np.ones(6, dtype=np.float32),
+            low=np.array([0.0, -1.0, -1.0, 0.0, -1.0, 0.0, -1.0, -2.0], dtype=np.float32),
+            high=np.array([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 2.0], dtype=np.float32),
             dtype=np.float32)
         self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(2,), dtype=np.float32)
 
@@ -86,6 +86,8 @@ class FollowCityEnv(gym.Env):
         self.instante_ultima_deteccion_blob = None
         self.giro_anterior = 0.0
         self.velocidad_lineal_anterior = 0.0
+        self.tamano_anterior = None
+        self.error_x_anterior = None
         self.frame_ts = -1
 
     def _cb_blobs(self, msg):
@@ -149,7 +151,15 @@ class FollowCityEnv(gym.Env):
             if self.inicio_perdida_blob is not None:
                 tiempo_perdido = np.clip((ahora - self.inicio_perdida_blob) / config.LOST_BLOB_SECONDS, 0.0, 1.0)
             ultima_posicion_x = self.ultima_posicion_blob_x if self.ultima_posicion_blob_x is not None else 0.0
-            return np.array([0.0, 0.0, 0.0, 0.0, ultima_posicion_x, tiempo_perdido], dtype=np.float32)
+            delta_tamano = 0.0 if self.tamano_anterior is None else -self.tamano_anterior
+            delta_error_x = 0.0 if self.error_x_anterior is None else ultima_posicion_x - self.error_x_anterior
+            self.tamano_anterior = 0.0
+            self.error_x_anterior = ultima_posicion_x
+            return np.array(
+                [0.0, 0.0, 0.0, 0.0, ultima_posicion_x, tiempo_perdido,
+                 np.clip(delta_tamano, -1.0, 1.0),
+                 np.clip(delta_error_x, -2.0, 2.0)],
+                dtype=np.float32)
 
         error_x = np.clip((float(blob.x) - config.BLOB_COORD_MAX / 2) / (config.BLOB_COORD_MAX / 2), -1.0, 1.0)
         error_y = np.clip((float(blob.y) - config.BLOB_COORD_MAX / 2) / (config.BLOB_COORD_MAX / 2), -1.0, 1.0)
@@ -160,7 +170,15 @@ class FollowCityEnv(gym.Env):
         self.instante_ultima_deteccion_blob = time.monotonic()
         self.inicio_perdida_blob = None
 
-        return np.array([1.0, error_x, error_y, tamano, error_x, 0.0], dtype=np.float32)
+        delta_tamano = 0.0 if self.tamano_anterior is None else tamano - self.tamano_anterior
+        delta_error_x = 0.0 if self.error_x_anterior is None else error_x - self.error_x_anterior
+        self.tamano_anterior = tamano
+        self.error_x_anterior = error_x
+        return np.array(
+            [1.0, error_x, error_y, tamano, error_x, 0.0,
+             np.clip(delta_tamano, -1.0, 1.0),
+             np.clip(delta_error_x, -2.0, 2.0)],
+            dtype=np.float32)
 
     def _publicar_velocidad(self, lineal, angular):
         mensaje = Twist()
@@ -195,6 +213,8 @@ class FollowCityEnv(gym.Env):
             self.inicio_perdida_blob = None
             self.ultima_posicion_blob_x = None
             self.instante_ultima_deteccion_blob = None
+            self.tamano_anterior = None
+            self.error_x_anterior = None
             self.giro_anterior = 0.0
             self.velocidad_lineal_anterior = 0.0
             self._blobs = []
@@ -211,6 +231,8 @@ class FollowCityEnv(gym.Env):
                 self._esperar_mensaje(self._n_blobs, config.RESET_SENSOR_TIMEOUT_S)
                 self._esperar_ir(self._n_ir, config.SENSOR_TIMEOUT_S)
                 self.instante_ultima_deteccion_blob = time.monotonic()
+                self.tamano_anterior = None
+                self.error_x_anterior = None
             except RuntimeError as error:
                 if intento + 1 == config.RESET_ATTEMPTS:
                     raise
@@ -285,6 +307,12 @@ class FollowCityEnv(gym.Env):
             * abs(float(self.giro_anterior))
             / config.MAX_ANGULAR_SPEED_RAD_S
         )
+        delta_angular = self.giro_anterior - giro_previo
+        r_cambio_giro = -(
+            config.ANGULAR_CHANGE_PENALTY_WEIGHT
+            * abs(delta_angular)
+            / config.MAX_ANGULAR_CHANGE_RAD_S
+        )
 
         info = {
             'visible': bool(obs[0]),
@@ -297,7 +325,11 @@ class FollowCityEnv(gym.Env):
             'r_centro': float(r_centro),
             'r_tamano': float(r_tamano),
             'r_suavidad': float(r_suavidad),
-            'velocidad_angular': float(self.giro_anterior)
+            'r_cambio_giro': float(r_cambio_giro),
+            'velocidad_angular': float(self.giro_anterior),
+            'delta_angular': float(delta_angular),
+            'delta_tamano': float(obs[6]),
+            'delta_error_x': float(obs[7]),
         }
         
         # Ignoramos la recompensa numérica de SB3 devolviendo 0.0 

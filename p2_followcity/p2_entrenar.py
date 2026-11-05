@@ -101,8 +101,8 @@ def calcular_calidad(registro, pasos_max):
         # Penalización creciente al acercarse al umbral de choque.
         exceso = max(
             0.0,
-            (tamano - config.TARGET_BLOB_SIZE_NORM)
-            / (config.TOO_CLOSE_BLOB_SIZE_NORM - config.TARGET_BLOB_SIZE_NORM),
+            (tamano - config.PROXIMITY_PENALTY_START_NORM)
+            / (config.TOO_CLOSE_BLOB_SIZE_NORM - config.PROXIMITY_PENALTY_START_NORM),
         )
         penalizacion_cercania = config.CLOSE_BLOB_PENALTY * exceso ** 2
         penalizacion_giro = (
@@ -110,11 +110,18 @@ def calcular_calidad(registro, pasos_max):
             * abs(float(info['velocidad_angular']))
             / config.MAX_ANGULAR_SPEED_RAD_S
         )
+        penalizacion_cambio_giro = (
+            config.ANGULAR_CHANGE_PENALTY_WEIGHT
+            * abs(float(info['delta_angular']))
+            / config.MAX_ANGULAR_CHANGE_RAD_S
+        )
 
-        total += recompensa - penalizacion_cercania - penalizacion_giro
+        total += recompensa - penalizacion_cercania - penalizacion_giro - penalizacion_cambio_giro
+        if not visible:
+            total -= config.LOST_VISIBILITY_PENALTY
         w = info['velocidad_angular']
         if w * w_prev < 0 and min(abs(w), abs(w_prev)) > 0.05:                      # el giro cambia de sentido
-            total -= config.ZIGZAG_PENALTY * 0.1
+            total -= config.ZIGZAG_PENALTY
         w_prev = w
     calidad = 100.0 * total / pasos_max
     fallo = bool(registro) and registro[-1].get('motivo_fin') not in (None, 'duración máxima')
@@ -269,7 +276,10 @@ def modo_evaluar(args):
         print(f"Episodio finalizado en {pasos} pasos. Motivo: {motivo}")
         
         if args.dibujar:
-            nombres_in = ["visible", "err_x", "err_y", "tam", "last_x", "t_perdido"]
+            nombres_in = [
+                "visible", "err_x", "err_y", "tam", "last_x", "t_perdido",
+                "delta_tam", "delta_err_x"
+            ]
             nombres_out = ["v_lineal", "w_angular"]
             dibujar_red(genoma, cfg, nombres_in, nombres_out, "topologia_red.png")
             

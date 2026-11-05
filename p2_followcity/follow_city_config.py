@@ -30,7 +30,7 @@ TILT_TIMEOUT_S = 10.0
 # ------------------------------------------------------------------
 # Límites del espacio de acción
 # ------------------------------------------------------------------
-MIN_LINEAR_SPEED_M_S = 0.03
+MIN_LINEAR_SPEED_M_S = 0.0
 MAX_LINEAR_SPEED_M_S = 0.1
 INITIAL_LINEAR_SPEED_M_S = 0.075
 INITIAL_SLOW_STEPS = 5
@@ -43,10 +43,10 @@ MAX_ANGULAR_CHANGE_RAD_S = 0.15
 # ------------------------------------------------------------------
 CONTROL_PERIOD_S = 0.1
 BLOB_PERIOD_S = 0.2
-REAL_STEP_S = 0.4             # duración real de un paso (espera 0,2 s + mensaje nuevo a 5 Hz)
+REAL_STEP_S = 0.25            # horizonte nominal de control por paso
 
 # Duración nominal de los episodios (más cortos para evolución, largos para evaluación)
-EPISODE_SECONDS = 20.0        # Antes 30
+EPISODE_SECONDS = 30.0
 EVAL_EPISODE_SECONDS = 120.0
 
 LOST_BLOB_SECONDS = 3.0
@@ -60,7 +60,10 @@ ACTION_SETTLE_S = 0.2
 # Coeficientes para el cálculo de la Calidad (Fitness)
 # ------------------------------------------------------------------
 CENTER_SIGMA = 0.2
-CLOSE_BLOB_PENALTY = 1.0
-ZIGZAG_PENALTY = 1.0
+CLOSE_BLOB_PENALTY = 2.0
+PROXIMITY_PENALTY_START_NORM = 0.25
+LOST_VISIBILITY_PENALTY = 0.3
+ZIGZAG_PENALTY = 2.0
 ANGULAR_PENALTY_WEIGHT = 0.05
+ANGULAR_CHANGE_PENALTY_WEIGHT = 0.1
 FAILURE_PENALTY_CAL = 20.0    # penalización por fallo, en la escala 0-100 de la calidad
