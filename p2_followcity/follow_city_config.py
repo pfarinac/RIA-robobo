@@ -8,9 +8,24 @@ IMAGE_HEIGHT_PX = 240
 BLOB_SIZE_MAX = 1000.0
 TARGET_BLOB_SIZE_NORM = 0.2
 TOO_CLOSE_BLOB_SIZE_NORM = 0.35
+TOO_FAR_BLOB_SIZE_NORM = 0.05
+
+# Separación privilegiada del simulador. El fallback visual requiere calibrar
+# estos tres tamaños con el escenario concreto antes de usarlo.
+USE_SIM_SEPARATION = True
+FOLLOWER_SIM_NAMESPACE = '/robobo/robot_0/sim'
+GUIDE_SIM_NAMESPACE = '/robobo/robot_robot_1/sim'
+TARGET_SEPARATION_M = 0.325
+SEPARATION_SIGMA_M = 0.1
+# No terminar por el tamaño aparente del guía cuando la escena fija la
+# posición inicial de ambos robots. El contacto físico sigue controlado por IR.
+MIN_SEPARATION_M = 0.0
+MAX_SEPARATION_M = 0.45
+LOST_GUIDE_SEPARATION_M = 0.90
 
 # Nuevas constantes P2
 BLOB_COORD_MAX = 100.0        # el detector entrega x e y en 0-100, no en píxeles
+ARRANQUE_UMBRAL_GUIA_M = 0.05
 
 # ------------------------------------------------------------------
 # Infrarrojos
@@ -34,7 +49,9 @@ MIN_LINEAR_SPEED_M_S = 0.0
 MAX_LINEAR_SPEED_M_S = 0.1
 INITIAL_LINEAR_SPEED_M_S = 0.075
 INITIAL_SLOW_STEPS = 5
-GUIDE_START_DELAY_S = 7
+# Pasos iniciales con avance recto para arrancar cada episodio.
+AUTO_FORWARD_STEPS = 5
+GUIDE_START_DELAY_S = 1.5
 MAX_ANGULAR_SPEED_RAD_S = 0.35
 MAX_ANGULAR_CHANGE_RAD_S = 0.15
 
@@ -59,11 +76,14 @@ ACTION_SETTLE_S = 0.2
 # ------------------------------------------------------------------
 # Coeficientes para el cálculo de la Calidad (Fitness)
 # ------------------------------------------------------------------
+ALIVE_REWARD = 0.3
+PRE_START_PENALTY = 0.5
+FAILURE_TIME_SCALE = 30.0
 CENTER_SIGMA = 0.2
 CLOSE_BLOB_PENALTY = 2.0
 PROXIMITY_PENALTY_START_NORM = 0.25
 LOST_VISIBILITY_PENALTY = 0.3
-ZIGZAG_PENALTY = 2.0
+ZIGZAG_PENALTY = 0.3
 ANGULAR_PENALTY_WEIGHT = 0.05
 ANGULAR_CHANGE_PENALTY_WEIGHT = 0.1
 FAILURE_PENALTY_CAL = 20.0    # penalización por fallo, en la escala 0-100 de la calidad

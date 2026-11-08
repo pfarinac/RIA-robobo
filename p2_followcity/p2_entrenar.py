@@ -17,6 +17,7 @@ import follow_city_config as config
 
 CONTADOR = {"pasos": 0, "evaluaciones": 0}
 ENTORNO_GLOBAL = None  # Singleton para no crear múltiples nodos ROS 2
+RUTA_EPISODIOS = None
 
 class RegistroGeneracion(neat.reporting.BaseReporter):
     """Guarda métricas, progreso y mejores genomas por generación en CSV."""
@@ -86,25 +87,17 @@ class RegistroGeneracion(neat.reporting.BaseReporter):
 
 
 def calcular_calidad(registro, pasos_max):
-    """Calcula una calidad en escala ~0-100 priorizando la distancia al objetivo."""
+    """Calcula una calidad en escala ~0-100 priorizando la separación objetivo."""
     total, w_prev = 0.0, 0.0
     for info in registro:
+        arr = float(info['guia_arrancado'])
         visible = float(info['visible'])
         g_centro = np.exp(-(float(info['error_x']) / config.CENTER_SIGMA) ** 2)
-
-        # El tamaño del blob es el proxy de separación disponible en este simulador.
-        # Crece de forma continua desde lejos hasta el tamaño objetivo.
-        tamano = float(info['tamano_norm'])
-        g_dist = np.clip(tamano / config.TARGET_BLOB_SIZE_NORM, 0.0, 1.0)
-        recompensa = visible * (0.1 + 0.3 * g_centro + 0.6 * g_dist)
-
-        # Penalización creciente al acercarse al umbral de choque.
-        exceso = max(
-            0.0,
-            (tamano - config.PROXIMITY_PENALTY_START_NORM)
-            / (config.TOO_CLOSE_BLOB_SIZE_NORM - config.PROXIMITY_PENALTY_START_NORM),
-        )
-        penalizacion_cercania = config.CLOSE_BLOB_PENALTY * exceso ** 2
+        g_separacion = float(info['g_separacion'])
+        base = config.ALIVE_REWARD + (
+            1.0 - config.ALIVE_REWARD
+        ) * g_separacion * (0.7 + 0.3 * g_centro)
+        recompensa = arr * visible * base
         penalizacion_giro = (
             config.ANGULAR_PENALTY_WEIGHT
             * abs(float(info['velocidad_angular']))
@@ -116,9 +109,11 @@ def calcular_calidad(registro, pasos_max):
             / config.MAX_ANGULAR_CHANGE_RAD_S
         )
 
-        total += recompensa - penalizacion_cercania - penalizacion_giro - penalizacion_cambio_giro
+        total += recompensa - penalizacion_giro - penalizacion_cambio_giro
         if not visible:
             total -= config.LOST_VISIBILITY_PENALTY
+        if not arr:
+            total -= config.PRE_START_PENALTY
         w = info['velocidad_angular']
         if w * w_prev < 0 and min(abs(w), abs(w_prev)) > 0.05:                      # el giro cambia de sentido
             total -= config.ZIGZAG_PENALTY
@@ -126,8 +121,23 @@ def calcular_calidad(registro, pasos_max):
     calidad = 100.0 * total / pasos_max
     fallo = bool(registro) and registro[-1].get('motivo_fin') not in (None, 'duración máxima')
     if fallo:
-        calidad -= config.FAILURE_PENALTY_CAL
+        restante = 1.0 - len(registro) / pasos_max
+        calidad -= config.FAILURE_PENALTY_CAL + config.FAILURE_TIME_SCALE * restante
     return calidad                               # sin recortar: los negativos valen
+
+
+def registrar_episodio(registro, calidad, numero_evaluacion):
+    if RUTA_EPISODIOS is None or not registro:
+        return
+    with open(RUTA_EPISODIOS, "a", newline="", encoding="utf-8") as archivo:
+        csv.writer(archivo).writerow([
+            numero_evaluacion,
+            float(np.mean([info['separacion_m'] for info in registro])),
+            float(np.mean([info['visible'] for info in registro])),
+            len(registro),
+            registro[-1].get('motivo_fin'),
+            calidad,
+        ])
 
 
 def evaluar_genoma(genoma, cfg, num_episodios=1):
@@ -144,7 +154,9 @@ def evaluar_genoma(genoma, cfg, num_episodios=1):
                 break
         CONTADOR["pasos"] += len(registro)
         CONTADOR["evaluaciones"] += 1
-        calidades.append(calcular_calidad(registro, ENTORNO_GLOBAL.pasos_max))
+        calidad = calcular_calidad(registro, ENTORNO_GLOBAL.pasos_max)
+        calidades.append(calidad)
+        registrar_episodio(registro, calidad, CONTADOR["evaluaciones"])
     return float(min(calidades))
 
 
@@ -152,6 +164,10 @@ def eval_genomes(genomas, cfg):
     """Función de callback para Population.run"""
     for _, genoma in genomas:
         genoma.fitness = evaluar_genoma(genoma, cfg)
+    for _, genoma in sorted(genomas, key=lambda par: par[1].fitness, reverse=True)[:3]:
+        genoma.fitness = 0.5 * (
+            genoma.fitness + evaluar_genoma(genoma, cfg)
+        )
 
 
 def dibujar_red(genoma, config_neat, nombres_entrada, nombres_salida, ruta):
@@ -197,9 +213,10 @@ def dibujar_red(genoma, config_neat, nombres_entrada, nombres_salida, ruta):
 
 
 def modo_entrenar(args):
-    global ENTORNO_GLOBAL
+    global ENTORNO_GLOBAL, RUTA_EPISODIOS
     
     ruta_csv = os.path.join(args.carpeta, "evolucion.csv")
+    RUTA_EPISODIOS = os.path.join(args.carpeta, "episodios.csv")
     if not args.checkpoint and os.path.exists(ruta_csv):
         print(f"\n[ERROR] La carpeta '{args.carpeta}' ya contiene un archivo evolucion.csv.")
         print("Lanzar una evolución nueva aquí mezclaría los datos o los sobreescribiría.")
@@ -218,6 +235,13 @@ def modo_entrenar(args):
         poblacion = neat.Checkpointer.restore_checkpoint(args.checkpoint)
     else:
         poblacion = neat.Population(cfg)
+
+    if not os.path.exists(RUTA_EPISODIOS):
+        with open(RUTA_EPISODIOS, "w", newline="", encoding="utf-8") as archivo:
+            csv.writer(archivo).writerow([
+                "evaluacion", "separacion_media_m", "fraccion_visible",
+                "pasos", "motivo_fin", "calidad",
+            ])
 
     poblacion.add_reporter(neat.StdOutReporter(True))
     poblacion.add_reporter(neat.StatisticsReporter())
@@ -247,7 +271,7 @@ def modo_entrenar(args):
 
 
 def modo_evaluar(args):
-    global ENTORNO_GLOBAL
+    global ENTORNO_GLOBAL, RUTA_EPISODIOS
     if not os.path.exists(args.modelo):
         print(f"Error: no se encontró el genoma {args.modelo}")
         return
@@ -260,20 +284,31 @@ def modo_evaluar(args):
         
     red = neat.nn.FeedForwardNetwork.create(genoma, cfg)
     
+    RUTA_EPISODIOS = os.path.join(os.path.dirname(args.modelo), "episodios.csv")
+    if not os.path.exists(RUTA_EPISODIOS):
+        with open(RUTA_EPISODIOS, "w", newline="", encoding="utf-8") as archivo:
+            csv.writer(archivo).writerow([
+                "evaluacion", "separacion_media_m", "fraccion_visible",
+                "pasos", "motivo_fin", "calidad",
+            ])
     ENTORNO_GLOBAL = FollowCityEnv(episode_seconds=config.EVAL_EPISODE_SECONDS)
     try:
         print(f"\nEvaluando el genoma {args.modelo}...")
         obs, _ = ENTORNO_GLOBAL.reset()
         pasos, recompensa_total = 0, 0.0
+        registro = []
         terminado, truncado = False, False
         
         while not (terminado or truncado):
             accion = np.array(red.activate(obs), dtype=np.float32)
             obs, recompensa, terminado, truncado, info = ENTORNO_GLOBAL.step(accion)
+            registro.append(info)
             pasos += 1
             
         motivo = info.get('motivo_fin', 'truncado por tiempo')
         print(f"Episodio finalizado en {pasos} pasos. Motivo: {motivo}")
+        calidad = calcular_calidad(registro, ENTORNO_GLOBAL.pasos_max)
+        registrar_episodio(registro, calidad, 1)
         
         if args.dibujar:
             nombres_in = [

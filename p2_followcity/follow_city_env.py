@@ -12,6 +12,7 @@ from geometry_msgs.msg import Twist
 from rclpy.node import Node
 from robobo_ros2_interfaces.action import MoveTilt
 from robobo_ros2_interfaces.srv import ResetSimulation, SetActiveColorBlobs
+from robobo_ros2_interfaces.msg import RobotLocation
 from std_msgs.msg import Int32MultiArray
 
 try:
@@ -56,6 +57,17 @@ class FollowCityEnv(gym.Env):
         self._n_ir = 0
         self.nodo.create_subscription(Int32MultiArray, NS_BASE + '/ir', self._cb_ir, 1)
 
+        self._pose_seguidor = None
+        self._pose_guia = None
+        self._n_pose = 0
+        if config.USE_SIM_SEPARATION:
+            self.nodo.create_subscription(
+                RobotLocation, config.FOLLOWER_SIM_NAMESPACE + '/robot_location',
+                self._cb_pose_seguidor, 1)
+            self.nodo.create_subscription(
+                RobotLocation, config.GUIDE_SIM_NAMESPACE + '/robot_location',
+                self._cb_pose_guia, 1)
+
         self.cli_colores = self.nodo.create_client(SetActiveColorBlobs, NS_SMARTPHONE + '/set_active_color_blobs')
         if not self.cli_colores.wait_for_service(timeout_sec=5.0):
             raise RuntimeError('No responde set_active_color_blobs.')
@@ -89,6 +101,8 @@ class FollowCityEnv(gym.Env):
         self.tamano_anterior = None
         self.error_x_anterior = None
         self.frame_ts = -1
+        self._guia_ini = None
+        self.guia_arrancado = False
 
     def _cb_blobs(self, msg):
         self._blobs = list(msg.blobs)
@@ -97,6 +111,14 @@ class FollowCityEnv(gym.Env):
     def _cb_ir(self, msg):
         self._ir = list(msg.data)
         self._n_ir += 1
+
+    def _cb_pose_seguidor(self, msg):
+        self._pose_seguidor = (float(msg.position.x), float(msg.position.z))
+        self._n_pose += 1
+
+    def _cb_pose_guia(self, msg):
+        self._pose_guia = (float(msg.position.x), float(msg.position.z))
+        self._n_pose += 1
 
     def _blob_verde(self):
         verdes = [blob for blob in self._blobs if str(blob.color).lower() == 'green'
@@ -118,6 +140,35 @@ class FollowCityEnv(gym.Env):
             if restante <= 0:
                 raise RuntimeError(f'No llegan lecturas de {NS_BASE}/ir.')
             rclpy.spin_once(self.nodo, timeout_sec=min(0.05, restante))
+
+    def _esperar_poses(self, timeout):
+        limite = time.monotonic() + timeout
+        while self._pose_seguidor is None or self._pose_guia is None:
+            restante = limite - time.monotonic()
+            if restante <= 0:
+                return False
+            rclpy.spin_once(self.nodo, timeout_sec=min(0.05, restante))
+        return True
+
+    def _separacion(self, tamano_norm):
+        if self._pose_seguidor is not None and self._pose_guia is not None:
+            dx = self._pose_seguidor[0] - self._pose_guia[0]
+            dz = self._pose_seguidor[1] - self._pose_guia[1]
+            return float(np.hypot(dx, dz) / 1000.0), True
+
+        # Fallback para una ejecución sin el segundo contenedor: calibrar los
+        # tamaños de blob de 0,20, 0,45 y 0,90 m en el escenario utilizado.
+        puntos_tamano = np.array([
+            config.TOO_FAR_BLOB_SIZE_NORM,
+            config.TARGET_BLOB_SIZE_NORM,
+            config.TOO_CLOSE_BLOB_SIZE_NORM,
+        ])
+        puntos_distancia = np.array([
+            config.LOST_GUIDE_SEPARATION_M,
+            config.MAX_SEPARATION_M,
+            config.MIN_SEPARATION_M,
+        ])
+        return float(np.interp(tamano_norm, puntos_tamano, puntos_distancia)), False
 
     def _vaciar_cola(self):
         for _ in range(100):
@@ -218,6 +269,8 @@ class FollowCityEnv(gym.Env):
             self.giro_anterior = 0.0
             self.velocidad_lineal_anterior = 0.0
             self._blobs = []
+            self._pose_seguidor = None
+            self._pose_guia = None
 
             secuencia = self._n_blobs
             secuencia_ir = self._n_ir
@@ -230,6 +283,11 @@ class FollowCityEnv(gym.Env):
                 self._vaciar_cola()
                 self._esperar_mensaje(self._n_blobs, config.RESET_SENSOR_TIMEOUT_S)
                 self._esperar_ir(self._n_ir, config.SENSOR_TIMEOUT_S)
+                if not self._esperar_poses(config.RESET_SENSOR_TIMEOUT_S):
+                    raise RuntimeError(
+                        'No llegan robot_location: ¿está el contenedor sim del guía?')
+                self._guia_ini = self._pose_guia
+                self.guia_arrancado = False
                 self.instante_ultima_deteccion_blob = time.monotonic()
                 self.tamano_anterior = None
                 self.error_x_anterior = None
@@ -242,6 +300,10 @@ class FollowCityEnv(gym.Env):
 
     def step(self, accion):
         accion = np.clip(np.asarray(accion, dtype=np.float32), -1.0, 1.0)
+
+        # Arranque inicial recto, igual que en P1.
+        if self.pasos < config.AUTO_FORWARD_STEPS:
+            accion = np.array([1.0, 0.0], dtype=np.float32)
         
         velocidad_maxima = config.INITIAL_LINEAR_SPEED_M_S if self.pasos < config.INITIAL_SLOW_STEPS else config.MAX_LINEAR_SPEED_M_S
         fraccion_avance = (float(accion[0]) + 1.0) / 2.0
@@ -277,10 +339,17 @@ class FollowCityEnv(gym.Env):
 
         self.pasos += 1
         obs = self._observacion()
+        if not self.guia_arrancado and self._guia_ini and self._pose_guia:
+            desplazamiento = np.hypot(
+                self._pose_guia[0] - self._guia_ini[0],
+                self._pose_guia[1] - self._guia_ini[1],
+            ) / 1000.0
+            self.guia_arrancado = desplazamiento > config.ARRANQUE_UMBRAL_GUIA_M
         proximidad_frontal = self._proximidad_frontal()
 
         contacto_aproximado = (proximidad_frontal >= config.FRONT_IR_CONTACT_THRESHOLD)
-        demasiado_cerca = bool(obs[0] and obs[3] >= config.TOO_CLOSE_BLOB_SIZE_NORM)
+        separacion_m, separacion_sim = self._separacion(float(obs[3]))
+        demasiado_cerca = separacion_m < config.MIN_SEPARATION_M
         blob_perdido_demasiado_tiempo = (self.inicio_perdida_blob is not None and time.monotonic() - self.inicio_perdida_blob >= config.LOST_BLOB_SECONDS)
         fallo = (contacto_aproximado or demasiado_cerca or blob_perdido_demasiado_tiempo)
 
@@ -295,13 +364,12 @@ class FollowCityEnv(gym.Env):
         if terminated or truncated:
             self._detener()
 
-        # Componentes de calidad para la función externa. El tamaño del blob
-        # es el proxy de separación disponible en este simulador.
+        # Componentes de calidad para la función externa.
         g_centro = np.exp(-(float(obs[1]) / config.CENTER_SIGMA) ** 2)
-        tamano_actual = float(obs[3])
-        g_dist = np.clip(tamano_actual / config.TARGET_BLOB_SIZE_NORM, 0.0, 1.0)
-        r_centro = 0.3 * g_centro
-        r_tamano = 0.6 * g_dist
+        g_separacion = np.exp(-0.5 * (
+            (separacion_m - config.TARGET_SEPARATION_M) / config.SEPARATION_SIGMA_M
+        ) ** 2)
+        r_separacion = g_separacion * (0.7 + 0.3 * g_centro)
         r_suavidad = -(
             config.ANGULAR_PENALTY_WEIGHT
             * abs(float(self.giro_anterior))
@@ -316,14 +384,17 @@ class FollowCityEnv(gym.Env):
 
         info = {
             'visible': bool(obs[0]),
+            'guia_arrancado': self.guia_arrancado,
             'demasiado_cerca': demasiado_cerca,
             'contacto_aproximado': contacto_aproximado,
             'proximidad_frontal': proximidad_frontal,
+            'separacion_m': float(separacion_m),
+            'separacion_sim': separacion_sim,
             'motivo_fin': motivo_fin,
             'error_x': float(obs[1]),
             'tamano_norm': float(obs[3]),
-            'r_centro': float(r_centro),
-            'r_tamano': float(r_tamano),
+            'g_separacion': float(g_separacion),
+            'r_separacion': float(r_separacion),
             'r_suavidad': float(r_suavidad),
             'r_cambio_giro': float(r_cambio_giro),
             'velocidad_angular': float(self.giro_anterior),
