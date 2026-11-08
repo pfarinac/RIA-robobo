@@ -94,10 +94,15 @@ def calcular_calidad(registro, pasos_max):
         visible = float(info['visible'])
         g_centro = np.exp(-(float(info['error_x']) / config.CENTER_SIGMA) ** 2)
         g_separacion = float(info['g_separacion'])
+        g_tamano = np.exp(-(
+            (float(info['tamano_norm']) - config.TARGET_BLOB_SIZE_NORM)
+            / config.SIZE_SIGMA
+        ) ** 2)
         base = config.ALIVE_REWARD + (
             1.0 - config.ALIVE_REWARD
         ) * g_separacion * (0.7 + 0.3 * g_centro)
-        recompensa = arr * visible * base
+        r_tamano = config.SIZE_WEIGHT * g_tamano
+        recompensa = arr * visible * (base + r_tamano)
         penalizacion_giro = (
             config.ANGULAR_PENALTY_WEIGHT
             * abs(float(info['velocidad_angular']))
