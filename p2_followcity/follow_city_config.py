@@ -76,12 +76,12 @@ ACTION_SETTLE_S = 0.2
 # ------------------------------------------------------------------
 # Coeficientes para el cálculo de la Calidad (Fitness)
 # ------------------------------------------------------------------
-ALIVE_REWARD = 0.3
+ALIVE_REWARD = 0.1
 PRE_START_PENALTY = 0.5
 FAILURE_TIME_SCALE = 30.0
 CENTER_SIGMA = 0.2
-SIZE_WEIGHT = 0.3
-SIZE_SIGMA = 0.1
+SIZE_WEIGHT = 1.0
+SIZE_SIGMA = 0.07
 CLOSE_BLOB_PENALTY = 2.0
 PROXIMITY_PENALTY_START_NORM = 0.25
 LOST_VISIBILITY_PENALTY = 0.3
