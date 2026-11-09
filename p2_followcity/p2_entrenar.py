@@ -123,7 +123,7 @@ def calcular_calidad(registro, pasos_max):
         if w * w_prev < 0 and min(abs(w), abs(w_prev)) > 0.05:                      # el giro cambia de sentido
             total -= config.ZIGZAG_PENALTY
         w_prev = w
-    calidad = 100.0 * total / pasos_max
+    calidad = 100.0 * total / (pasos_max * (1.0 + config.SIZE_WEIGHT))
     fallo = bool(registro) and registro[-1].get('motivo_fin') not in (None, 'duración máxima')
     if fallo:
         restante = 1.0 - len(registro) / pasos_max
