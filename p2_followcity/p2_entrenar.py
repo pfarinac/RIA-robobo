@@ -87,22 +87,17 @@ class RegistroGeneracion(neat.reporting.BaseReporter):
 
 
 def calcular_calidad(registro, pasos_max):
-    """Calcula una calidad en escala ~0-100 priorizando la separación objetivo."""
+    """Calcula una calidad en escala ~0-100 usando la separación real."""
     total, w_prev = 0.0, 0.0
     for info in registro:
         arr = float(info['guia_arrancado'])
         visible = float(info['visible'])
         g_centro = np.exp(-(float(info['error_x']) / config.CENTER_SIGMA) ** 2)
         g_separacion = float(info['g_separacion'])
-        g_tamano = np.exp(-(
-            (float(info['tamano_norm']) - config.TARGET_BLOB_SIZE_NORM)
-            / config.SIZE_SIGMA
-        ) ** 2)
         base = config.ALIVE_REWARD + (
             1.0 - config.ALIVE_REWARD
         ) * g_separacion * (0.7 + 0.3 * g_centro)
-        r_tamano = config.SIZE_WEIGHT * g_tamano
-        recompensa = arr * visible * (base + r_tamano)
+        recompensa = arr * visible * base
         penalizacion_giro = (
             config.ANGULAR_PENALTY_WEIGHT
             * abs(float(info['velocidad_angular']))
@@ -123,7 +118,7 @@ def calcular_calidad(registro, pasos_max):
         if w * w_prev < 0 and min(abs(w), abs(w_prev)) > 0.05:                      # el giro cambia de sentido
             total -= config.ZIGZAG_PENALTY
         w_prev = w
-    calidad = 100.0 * total / (pasos_max * (1.0 + config.SIZE_WEIGHT))
+    calidad = 100.0 * total / pasos_max
     fallo = bool(registro) and registro[-1].get('motivo_fin') not in (None, 'duración máxima')
     if fallo:
         restante = 1.0 - len(registro) / pasos_max
