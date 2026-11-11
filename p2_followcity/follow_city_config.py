@@ -88,3 +88,4 @@ ZIGZAG_PENALTY = 0.3
 ANGULAR_PENALTY_WEIGHT = 0.05
 ANGULAR_CHANGE_PENALTY_WEIGHT = 0.1
 FAILURE_PENALTY_CAL = 20.0    # penalización por fallo, en la escala 0-100 de la calidad
+
