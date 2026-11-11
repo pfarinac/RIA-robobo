@@ -90,5 +90,3 @@ ANGULAR_PENALTY_WEIGHT = 0.05
 ANGULAR_CHANGE_PENALTY_WEIGHT = 0.1
 FAILURE_PENALTY_CAL = 20.0    # penalización por fallo, en la escala 0-100 de la calidad
 
-LANE_SIGMA_M = 0.10     # tolerancia lateral (a calibrar)
-LANE_WEIGHT = 0.5
