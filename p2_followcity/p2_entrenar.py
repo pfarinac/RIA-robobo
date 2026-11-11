@@ -113,6 +113,9 @@ def calcular_calidad(registro, pasos_max):
             * abs(float(info['delta_angular']))
             / config.MAX_ANGULAR_CHANGE_RAD_S
         )
+        g_carril = np.exp(-(float(info['error_carril_m']) / config.LANE_SIGMA_M) ** 2)
+        r_carril = config.LANE_WEIGHT * g_carril
+        recompensa = arr * visible * g_separacion * (base + r_tamano + r_carril)
 
         total += recompensa - penalizacion_giro - penalizacion_cambio_giro
         if not visible:
@@ -123,7 +126,7 @@ def calcular_calidad(registro, pasos_max):
         if w * w_prev < 0 and min(abs(w), abs(w_prev)) > 0.05:                      # el giro cambia de sentido
             total -= config.ZIGZAG_PENALTY
         w_prev = w
-    calidad = 100.0 * total / (pasos_max * (1.0 + config.SIZE_WEIGHT))
+    calidad = 100.0 * total / (pasos_max * (1.0 + config.SIZE_WEIGHT +  config.LANE_WEIGHT))
     fallo = bool(registro) and registro[-1].get('motivo_fin') not in (None, 'duración máxima')
     if fallo:
         restante = 1.0 - len(registro) / pasos_max
