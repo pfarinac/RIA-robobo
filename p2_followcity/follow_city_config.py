@@ -14,7 +14,8 @@ TOO_FAR_BLOB_SIZE_NORM = 0.05
 # estos tres tamaños con el escenario concreto antes de usarlo.
 USE_SIM_SEPARATION = True
 FOLLOWER_SIM_NAMESPACE = '/robobo/robot_0/sim'
-GUIDE_SIM_NAMESPACE = '/robobo/robot_robot_1/sim'
+GUIDE_SIM_NAMESPACE = '/robobo/robot_0/sim'
+GUIDE_SIM_OBJECT_ID = 'PATHFOLLOWROBOBO'
 TARGET_SEPARATION_M = 0.325
 SEPARATION_SIGMA_M = 0.1
 # No terminar por el tamaño aparente del guía cuando la escena fija la

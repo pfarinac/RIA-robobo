@@ -20,6 +20,11 @@ try:
 except ImportError:
     BlobArray = None
 
+try:
+    from robobo_ros2_interfaces.msg import SimObjectArray
+except ImportError:
+    SimObjectArray = None
+
 import follow_city_config as config
 
 NS_BASE = '/robobo/robot_0/base'
@@ -33,6 +38,8 @@ class FollowCityEnv(gym.Env):
         super().__init__()
         if BlobArray is None:
             raise ImportError('No se encuentra robobo_ros2_interfaces/BlobArray.')
+        if SimObjectArray is None:
+            raise ImportError('No se encuentra robobo_ros2_interfaces/SimObjectArray.')
 
         if not rclpy.ok():
             rclpy.init()
@@ -65,8 +72,8 @@ class FollowCityEnv(gym.Env):
                 RobotLocation, config.FOLLOWER_SIM_NAMESPACE + '/robot_location',
                 self._cb_pose_seguidor, 1)
             self.nodo.create_subscription(
-                RobotLocation, config.GUIDE_SIM_NAMESPACE + '/robot_location',
-                self._cb_pose_guia, 1)
+                SimObjectArray, config.GUIDE_SIM_NAMESPACE + '/objects',
+                self._cb_objects, 1)
 
         self.cli_colores = self.nodo.create_client(SetActiveColorBlobs, NS_SMARTPHONE + '/set_active_color_blobs')
         if not self.cli_colores.wait_for_service(timeout_sec=5.0):
@@ -119,6 +126,16 @@ class FollowCityEnv(gym.Env):
     def _cb_pose_guia(self, msg):
         self._pose_guia = (float(msg.position.x), float(msg.position.z))
         self._n_pose += 1
+
+    def _cb_objects(self, msg):
+        for objeto in msg.objects:
+            if str(objeto.object_id) == config.GUIDE_SIM_OBJECT_ID:
+                self._pose_guia = (
+                    float(objeto.position.x),
+                    float(objeto.position.z),
+                )
+                self._n_pose += 1
+                return
 
     def _blob_verde(self):
         verdes = [blob for blob in self._blobs if str(blob.color).lower() == 'green'
