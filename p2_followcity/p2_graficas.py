@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """Uso: python3 p2_graficas.py evol_s42/evolucion.csv [evol_s43/evolucion.csv ...]"""
 import sys
+from pathlib import Path
+
 import numpy as np
 import matplotlib.pyplot as plt
 
-datos = [np.genfromtxt(r, delimiter=",", names=True) for r in sys.argv[1:]]
+rutas_csv = sys.argv[1:]
+datos = [np.genfromtxt(r, delimiter=",", names=True) for r in rutas_csv]
 n = min(len(np.atleast_1d(d["generacion"])) for d in datos)
 gen = np.arange(n)
 
@@ -31,7 +34,9 @@ ax[1].set_xlabel("Generación"); ax[1].set_ylabel("Número de especies")
 curva(ax[2], "nodos_mejor", "Nodos")
 curva(ax[2], "conexiones_mejor", "Conexiones activas")
 ax[2].set_xlabel("Generación"); ax[2].set_ylabel("Complejidad del mejor"); ax[2].legend()
-fig.savefig("evolucion.png", dpi=200, bbox_inches="tight")
-for r, d in zip(sys.argv[1:], datos):
+ruta_grafica = Path(rutas_csv[0]).resolve().parent / "evolucion.png"
+fig.savefig(ruta_grafica, dpi=200, bbox_inches="tight")
+print("Gráfica guardada en:", ruta_grafica)
+for r, d in zip(rutas_csv, datos):
     print(r, "pasos:", int(np.atleast_1d(d["pasos"])[-1]),
           "horas:", round(float(np.atleast_1d(d["segundos"])[-1]) / 3600, 2))
