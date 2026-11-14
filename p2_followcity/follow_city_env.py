@@ -369,12 +369,14 @@ class FollowCityEnv(gym.Env):
         demasiado_cerca = separacion_m < config.MIN_SEPARATION_M
         separacion_demasiado_grande = bool(separacion_sim and separacion_m > config.LOST_GUIDE_SEPARATION_M)
         blob_perdido_demasiado_tiempo = (self.inicio_perdida_blob is not None and time.monotonic() - self.inicio_perdida_blob >= config.LOST_BLOB_SECONDS)
-        fallo = (contacto_aproximado or demasiado_cerca or separacion_demasiado_grande or blob_perdido_demasiado_tiempo)
+        # La separación excesiva se conserva como diagnóstico, pero no termina
+        # ni reinicia el episodio.
+        fallo = (contacto_aproximado or demasiado_cerca or blob_perdido_demasiado_tiempo)
 
         motivo_fin = None
         if contacto_aproximado: motivo_fin = 'proximidad frontal (choque)'
         elif demasiado_cerca: motivo_fin = 'blob demasiado grande'
-        elif separacion_demasiado_grande: motivo_fin = 'separación real > 0.9 m'
+        # elif separacion_demasiado_grande: motivo_fin = 'separación real > 0.9 m'
         elif blob_perdido_demasiado_tiempo: motivo_fin = 'blob perdido'
         elif self.pasos >= self.pasos_max: motivo_fin = 'duración máxima'
 
