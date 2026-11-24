@@ -1,0 +1,148 @@
+{
+  "nombre": "real",
+  "descripcion": "Perfil para el Robobo físico en la RoboboCity real. Seleccionar con --perfil perfiles/perfil_real.json o RIA_PERFIL=real. Los valores marcados como PENDIENTE se ajustan en la calibración (parte 7).",
+  "es_simulacion": false,
+  "ros": {
+    "ns_robot": "/robobo/robot_0",
+    "topic_cmd_vel": "base/cmd_vel",
+    "topic_ir": "base/ir",
+    "accion_tilt": "base/move_tilt",
+    "accion_pan": "base/move_pan",
+    "topic_imagen": "smartphone/camera/image_raw",
+    "topic_objeto": "smartphone/detected_object",
+    "srv_iniciar_reconocimiento": "smartphone/start_object_recognition",
+    "_doc": {
+      "ns_robot": "texto: espacio de nombres del robot seguidor en el puente robobo_ros2",
+      "topic_cmd_vel": "texto: relativo a ns_robot (geometry_msgs/Twist)",
+      "topic_ir": "texto: relativo a ns_robot (std_msgs/Int32MultiArray)",
+      "accion_tilt": "texto: relativo a ns_robot (acción MoveTilt)",
+      "accion_pan": "texto: relativo a ns_robot (acción MovePan)",
+      "topic_imagen": "texto: relativo a ns_robot (sensor_msgs/Image, bgr8)",
+      "topic_objeto": "texto: relativo a ns_robot (robobo_ros2_interfaces/DetectedObject)",
+      "srv_iniciar_reconocimiento": "texto: relativo a ns_robot (StartObjectRecognition)"
+    }
+  },
+  "camara": {
+    "tilt_deg": 90.0,
+    "tilt_velocidad_deg_s": 20.0,
+    "pan_deg": 0.0,
+    "resolucion_ancho_px": 640,
+    "resolucion_alto_px": 480,
+    "frecuencia_esperada_hz": 15.0,
+    "antiguedad_max_imagen_s": 0.7,
+    "timeout_movimiento_s": 10.0,
+    "_doc": {
+      "tilt_deg": "grados: inclinación fija del atril durante el seguimiento (90 = cámara horizontal en P1). Revisar en la parte 3 para ver carril y guía a la vez",
+      "tilt_velocidad_deg_s": "grados/s: velocidad del movimiento de tilt al inicio",
+      "pan_deg": "grados: giro fijo del atril (0 = al frente)",
+      "resolucion_ancho_px": "píxeles: ancho esperado de camera/image_raw (se comprueba en ejecución)",
+      "resolucion_alto_px": "píxeles: alto esperado de camera/image_raw",
+      "frecuencia_esperada_hz": "Hz: frecuencia nominal del streaming de imagen",
+      "antiguedad_max_imagen_s": "segundos: una imagen más antigua se considera no válida para el carril",
+      "timeout_movimiento_s": "segundos: espera máxima a que termine el movimiento de pan/tilt"
+    }
+  },
+  "carril": {
+    "roi_y_inicio_frac": 0.55,
+    "roi_y_fin_frac": 1.0,
+    "hsv_linea_min": [
+      0,
+      0,
+      180
+    ],
+    "hsv_linea_max": [
+      180,
+      60,
+      255
+    ],
+    "area_min_linea_px": 150,
+    "fila_adelantada_frac": 0.6,
+    "escala_desplazamiento": 1.0,
+    "escala_angulo_rad": 0.785,
+    "validez_min": 0.3,
+    "_doc": {
+      "roi_y_inicio_frac": "fracción [0,1] de la altura: inicio de la región de interés (desde arriba). PENDIENTE parte 3",
+      "roi_y_fin_frac": "fracción [0,1] de la altura: fin de la región de interés",
+      "hsv_linea_min": "HSV OpenCV (H 0-180, S 0-255, V 0-255): umbral inferior del color de las líneas. PENDIENTE parte 3",
+      "hsv_linea_max": "HSV OpenCV: umbral superior del color de las líneas",
+      "area_min_linea_px": "píxeles²: área mínima de un contorno para aceptarlo como línea",
+      "fila_adelantada_frac": "fracción [0,1] de la ROI: fila del punto adelantado del centro del carril",
+      "escala_desplazamiento": "adimensional: factor que multiplica el desplazamiento lateral normalizado",
+      "escala_angulo_rad": "radianes: ángulo que se normaliza a 1 (salida = ángulo / escala)",
+      "validez_min": "adimensional [0,1]: por debajo, el carril se considera no válido"
+    }
+  },
+  "guia": {
+    "etiquetas_validas": [],
+    "confianza_min": 0.6,
+    "ancho_imagen_px": 640,
+    "alto_imagen_px": 480,
+    "metrica_tamano": "raiz_area",
+    "escala_tamano": 1.0,
+    "tamano_objetivo_norm": 0.2,
+    "tamano_demasiado_cerca_norm": 0.35,
+    "usar_timestamp_para_frescura": true,
+    "antiguedad_max_deteccion_s": 0.8,
+    "tiempo_perdido_max_s": 3.0,
+    "suavizado_alfa": 1.0,
+    "_doc": {
+      "etiquetas_validas": "lista de texto: etiquetas del detector que cuentan como guía; vacía = cualquiera. Ver las que aparecen con herramientas/inspeccionar_guia.py",
+      "confianza_min": "adimensional [0.5,1]: confianza mínima para aceptar una detección",
+      "ancho_imagen_px": "píxeles: ancho del sistema de coordenadas en que readDetectedObject entrega x y width. VERIFICAR con inspeccionar_guia.py",
+      "alto_imagen_px": "píxeles: alto del sistema de coordenadas de y y height",
+      "metrica_tamano": "texto: 'raiz_area' (sqrt(w·h)/sqrt(W·H)), 'altura' (h/H) o 'ancho' (w/W)",
+      "escala_tamano": "adimensional: multiplica el tamaño aparente; se calibra entre sim y real. PENDIENTE: valor de analizar_calibracion_guia.py",
+      "tamano_objetivo_norm": "adimensional [0,1]: tamaño normalizado que corresponde a la separación deseada",
+      "tamano_demasiado_cerca_norm": "adimensional [0,1]: a partir de este tamaño el guía está demasiado cerca",
+      "usar_timestamp_para_frescura": "booleano: si es true, una detección con el mismo timestamp que la anterior no se considera nueva",
+      "antiguedad_max_deteccion_s": "segundos: si la última detección nueva es más antigua, el guía se considera no visible",
+      "tiempo_perdido_max_s": "segundos: tiempo sin ver al guía que se normaliza a 1 en la observación",
+      "suavizado_alfa": "adimensional (0,1]: filtro exponencial sobre x y tamaño (1 = sin suavizar)"
+    }
+  },
+  "politica": {
+    "v_min_m_s": 0.0,
+    "v_max_m_s": 0.1,
+    "w_max_rad_s": 0.35,
+    "dw_max_rad_s": 0.15,
+    "escala_v": 1.0,
+    "escala_w": 1.0,
+    "ruta_modelo": "modelos/p3_sac_c4.zip",
+    "obs_recorte": 1.0,
+    "_doc": {
+      "v_min_m_s": "m/s: velocidad lineal mínima. 0 para poder detenerse en las paradas del guía (C4)",
+      "v_max_m_s": "m/s: velocidad lineal máxima",
+      "w_max_rad_s": "rad/s: módulo máximo de la velocidad angular",
+      "dw_max_rad_s": "rad/s: cambio máximo de la velocidad angular entre dos pasos",
+      "escala_v": "adimensional: corrección de la consigna lineal enviada (calibración de motores). PENDIENTE: tramos rectos cronometrados",
+      "escala_w": "adimensional: corrección de la consigna angular enviada (calibración de motores). PENDIENTE: giros sobre sí mismo cronometrados",
+      "ruta_modelo": "ruta: modelo SAC, relativa a la carpeta p3_followcity",
+      "obs_recorte": "adimensional: las observaciones normalizadas se recortan a [-obs_recorte, obs_recorte]"
+    }
+  },
+  "seguridad": {
+    "periodo_control_s": 0.25,
+    "periodo_reenvio_cmd_vel_s": 0.1,
+    "tiempo_max_sin_carril_s": 2.0,
+    "tiempo_max_sin_guia_s": 3.0,
+    "ir_saturacion": 1000.0,
+    "ir_indices_frontales": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "ir_umbral_contacto": 0.85,
+    "_doc": {
+      "periodo_control_s": "segundos: periodo del bucle de la política (un paso de RL)",
+      "periodo_reenvio_cmd_vel_s": "segundos: periodo de reenvío de cmd_vel dentro de un paso (< 0,5 s del watchdog del puente)",
+      "tiempo_max_sin_carril_s": "segundos: sin carril válido durante este tiempo se activa la parada operativa",
+      "tiempo_max_sin_guia_s": "segundos: sin ver al guía durante este tiempo se activa la parada operativa",
+      "ir_saturacion": "unidades brutas del IR: valor que se normaliza a 1",
+      "ir_indices_frontales": "lista de índices: sensores IR frontales del array base/ir",
+      "ir_umbral_contacto": "adimensional [0,1]: proximidad IR normalizada que se cuenta como contacto"
+    }
+  },
+  "simulacion": null
+}
