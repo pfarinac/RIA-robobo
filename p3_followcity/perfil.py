@@ -34,8 +34,10 @@ CLAVES_OBLIGATORIAS = {
     'camara': ['tilt_deg', 'resolucion_ancho_px', 'resolucion_alto_px',
                'frecuencia_esperada_hz', 'antiguedad_max_imagen_s'],
     'carril': ['roi_y_inicio_frac', 'roi_y_fin_frac', 'hsv_linea_min',
-               'hsv_linea_max', 'escala_desplazamiento', 'escala_angulo_rad',
-               'validez_min'],
+               'hsv_linea_max', 'ancho_min_linea_px', 'n_filas',
+               'fila_adelantada_frac', 'horizonte_y_frac', 'ancho_carril_por_px',
+               'centro_optico_x_frac', 'focal_frac', 'tolerancia_ancho',
+               'escala_desplazamiento', 'escala_angulo_rad', 'validez_min'],
     'guia': ['etiquetas_validas', 'confianza_min', 'ancho_imagen_px',
              'alto_imagen_px', 'metrica_tamano', 'escala_tamano',
              'usar_timestamp_para_frescura', 'antiguedad_max_deteccion_s',
@@ -154,11 +156,12 @@ def resolver_ruta(perfil=None):
     if perfil is None:
         perfil = os.environ.get(VARIABLE_ENTORNO, PERFIL_POR_DEFECTO)
     candidato = Path(perfil)
-    if candidato.suffix == '' and not candidato.exists():
-        candidato = CARPETA_PERFILES / 'perfil_{}.json'.format(perfil)
-    elif not candidato.is_absolute() and not candidato.exists():
+    corto = CARPETA_PERFILES / 'perfil_{}.json'.format(perfil)
+    if candidato.suffix == '' and corto.is_file():
+        candidato = corto  # nombre corto: 'sim', 'real'
+    elif not candidato.is_absolute() and not candidato.is_file():
         candidato = CARPETA_BASE / candidato
-    if not candidato.exists():
+    if not candidato.is_file():
         raise ErrorPerfil('No existe el perfil: {}'.format(perfil))
     return candidato.resolve()
 

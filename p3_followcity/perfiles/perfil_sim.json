@@ -2,7 +2,6 @@
   "nombre": "sim",
   "descripcion": "Perfil para RoboboSim (RoboboCity, anillo exterior). Seleccionar con --perfil perfiles/perfil_sim.json o RIA_PERFIL=sim.",
   "es_simulacion": true,
-
   "ros": {
     "ns_robot": "/robobo/robot_0",
     "topic_cmd_vel": "base/cmd_vel",
@@ -23,56 +22,75 @@
       "srv_iniciar_reconocimiento": "texto: relativo a ns_robot (StartObjectRecognition)"
     }
   },
-
   "camara": {
-    "tilt_deg": 90.0,
+    "tilt_deg": 105.0,
     "tilt_velocidad_deg_s": 20.0,
     "pan_deg": 0.0,
-    "resolucion_ancho_px": 640,
-    "resolucion_alto_px": 480,
+    "resolucion_ancho_px": 480,
+    "resolucion_alto_px": 640,
     "frecuencia_esperada_hz": 30.0,
     "antiguedad_max_imagen_s": 0.5,
     "timeout_movimiento_s": 10.0,
     "_doc": {
-      "tilt_deg": "grados: inclinación fija del atril durante el seguimiento (90 = cámara horizontal en P1). Revisar en la parte 3 para ver carril y guía a la vez",
+      "tilt_deg": "grados: inclinación fija del atril. 105 = se ven a la vez el guía completo y las líneas del carril (con el tilt inicial del simulador la caja del guía queda cortada por abajo). Provisional hasta la parte 3",
       "tilt_velocidad_deg_s": "grados/s: velocidad del movimiento de tilt al inicio",
       "pan_deg": "grados: giro fijo del atril (0 = al frente)",
-      "resolucion_ancho_px": "píxeles: ancho esperado de camera/image_raw (se comprueba en ejecución)",
-      "resolucion_alto_px": "píxeles: alto esperado de camera/image_raw",
+      "resolucion_ancho_px": "píxeles: ancho de camera/image_raw. Medido en RoboboSim 4.4.6: 480 (imagen vertical)",
+      "resolucion_alto_px": "píxeles: alto de camera/image_raw. Medido en RoboboSim 4.4.6: 640",
       "frecuencia_esperada_hz": "Hz: frecuencia nominal del streaming de imagen",
       "antiguedad_max_imagen_s": "segundos: una imagen más antigua se considera no válida para el carril",
       "timeout_movimiento_s": "segundos: espera máxima a que termine el movimiento de pan/tilt"
     }
   },
-
   "carril": {
-    "roi_y_inicio_frac": 0.55,
-    "roi_y_fin_frac": 1.0,
-    "hsv_linea_min": [0, 0, 180],
-    "hsv_linea_max": [180, 60, 255],
-    "area_min_linea_px": 150,
-    "fila_adelantada_frac": 0.6,
+    "roi_y_inicio_frac": 0.42,
+    "roi_y_fin_frac": 0.97,
+    "hsv_linea_min": [
+      0,
+      0,
+      170
+    ],
+    "hsv_linea_max": [
+      180,
+      50,
+      255
+    ],
+    "ancho_min_linea_px": 5,
+    "n_filas": 24,
+    "fila_adelantada_frac": 0.25,
+    "horizonte_y_frac": 0.3423,
+    "ancho_carril_por_px": 0.9634,
+    "centro_optico_x_frac": 0.4855,
+    "focal_frac": 1.1116,
+    "tolerancia_ancho": 0.3,
     "escala_desplazamiento": 1.0,
-    "escala_angulo_rad": 0.785,
-    "validez_min": 0.3,
+    "escala_angulo_rad": 0.524,
+    "validez_min": 0.4,
     "_doc": {
-      "roi_y_inicio_frac": "fracción [0,1] de la altura: inicio de la región de interés (desde arriba). PENDIENTE parte 3",
+      "roi_y_inicio_frac": "fracción [0,1] de la altura: inicio de la región de interés (desde arriba). Debe quedar por debajo del horizonte",
       "roi_y_fin_frac": "fracción [0,1] de la altura: fin de la región de interés",
-      "hsv_linea_min": "HSV OpenCV (H 0-180, S 0-255, V 0-255): umbral inferior del color de las líneas. PENDIENTE parte 3",
+      "hsv_linea_min": "HSV OpenCV (H 0-180, S 0-255, V 0-255): umbral inferior del color de las líneas (blanco: S baja, V alta)",
       "hsv_linea_max": "HSV OpenCV: umbral superior del color de las líneas",
-      "area_min_linea_px": "píxeles²: área mínima de un contorno para aceptarlo como línea",
-      "fila_adelantada_frac": "fracción [0,1] de la ROI: fila del punto adelantado del centro del carril",
-      "escala_desplazamiento": "adimensional: factor que multiplica el desplazamiento lateral normalizado",
-      "escala_angulo_rad": "radianes: ángulo que se normaliza a 1 (salida = ángulo / escala)",
+      "ancho_min_linea_px": "píxeles: ancho mínimo de un tramo blanco en una fila para considerarlo línea (descarta postes finos)",
+      "n_filas": "adimensional: filas de la ROI que se barren por fotograma",
+      "fila_adelantada_frac": "fracción [0,1] de la ROI (0 arriba, 1 abajo): fila del punto adelantado del centro del carril (ángulo pure pursuit)",
+      "horizonte_y_frac": "fracción [0,1] de la altura: fila del horizonte (punto de fuga) con el tilt fijo. Calibrado con calibrar_carril.py",
+      "ancho_carril_por_px": "adimensional (px/px): ancho del carril en píxeles por cada píxel bajo el horizonte (k = ancho/altura de cámara). Calibrado",
+      "centro_optico_x_frac": "fracción del ancho de imagen: columna del punto de fuga con el robot alineado con el carril. Calibrado",
+      "focal_frac": "adimensional: focal horizontal en píxeles / ancho de imagen. Calibrado con imágenes giradas",
+      "tolerancia_ancho": "fracción del ancho de carril: distancia máxima de un tramo a la línea predicha para asignarlo",
+      "escala_desplazamiento": "adimensional: factor sobre el desplazamiento en anchos de carril (1 = sin corrección)",
+      "escala_angulo_rad": "radianes: ángulo que se normaliza a 1 (0,524 rad = 30°)",
       "validez_min": "adimensional [0,1]: por debajo, el carril se considera no válido"
     }
   },
-
   "guia": {
-    "etiquetas_validas": [],
+    "etiquetas_validas": [
+      "robobo"
+    ],
     "confianza_min": 0.5,
-    "ancho_imagen_px": 640,
-    "alto_imagen_px": 480,
+    "ancho_imagen_px": 480,
+    "alto_imagen_px": 640,
     "metrica_tamano": "raiz_area",
     "escala_tamano": 1.0,
     "tamano_objetivo_norm": 0.2,
@@ -82,21 +100,20 @@
     "tiempo_perdido_max_s": 3.0,
     "suavizado_alfa": 1.0,
     "_doc": {
-      "etiquetas_validas": "lista de texto: etiquetas del detector que cuentan como guía; vacía = cualquiera. Ver las que aparecen con herramientas/inspeccionar_guia.py",
+      "etiquetas_validas": "lista de texto: etiquetas que cuentan como guía. En RoboboSim el guía sale como 'robobo' (confianza ~0,63)",
       "confianza_min": "adimensional [0.5,1]: confianza mínima para aceptar una detección",
-      "ancho_imagen_px": "píxeles: ancho del sistema de coordenadas en que readDetectedObject entrega x y width. VERIFICAR con inspeccionar_guia.py",
-      "alto_imagen_px": "píxeles: alto del sistema de coordenadas de y y height",
+      "ancho_imagen_px": "píxeles: ancho del sistema de coordenadas de x y width de detected_object (coincide con la imagen: 480). x, y son el CENTRO de la caja",
+      "alto_imagen_px": "píxeles: alto del sistema de coordenadas de y y height (640)",
       "metrica_tamano": "texto: 'raiz_area' (sqrt(w·h)/sqrt(W·H)), 'altura' (h/H) o 'ancho' (w/W)",
       "escala_tamano": "adimensional: multiplica el tamaño aparente; se calibra entre sim y real",
       "tamano_objetivo_norm": "adimensional [0,1]: tamaño normalizado que corresponde a la separación deseada",
       "tamano_demasiado_cerca_norm": "adimensional [0,1]: a partir de este tamaño el guía está demasiado cerca",
       "usar_timestamp_para_frescura": "booleano: si es true, una detección con el mismo timestamp que la anterior no se considera nueva",
-      "antiguedad_max_deteccion_s": "segundos: si la última detección nueva es más antigua, el guía se considera no visible",
+      "antiguedad_max_deteccion_s": "segundos: si la última detección NUEVA (timestamp distinto) es más antigua, el guía se considera no visible. Debe ser >= 1,5 x el periodo entre detecciones nuevas que mide comprobar_puente.py",
       "tiempo_perdido_max_s": "segundos: tiempo sin ver al guía que se normaliza a 1 en la observación",
       "suavizado_alfa": "adimensional (0,1]: filtro exponencial sobre x y tamaño (1 = sin suavizar)"
     }
   },
-
   "politica": {
     "v_min_m_s": 0.0,
     "v_max_m_s": 0.1,
@@ -117,18 +134,23 @@
       "obs_recorte": "adimensional: las observaciones normalizadas se recortan a [-obs_recorte, obs_recorte]"
     }
   },
-
   "seguridad": {
     "periodo_control_s": 0.25,
-    "periodo_reenvio_cmd_vel_s": 0.1,
+    "periodo_reenvio_cmd_vel_s": 0.2,
     "tiempo_max_sin_carril_s": 2.0,
     "tiempo_max_sin_guia_s": 3.0,
     "ir_saturacion": 1000.0,
-    "ir_indices_frontales": [1, 2, 3, 4, 5],
+    "ir_indices_frontales": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
     "ir_umbral_contacto": 0.85,
     "_doc": {
       "periodo_control_s": "segundos: periodo del bucle de la política (un paso de RL)",
-      "periodo_reenvio_cmd_vel_s": "segundos: periodo de reenvío de cmd_vel dentro de un paso (< 0,5 s del watchdog del puente)",
+      "periodo_reenvio_cmd_vel_s": "segundos: periodo de reenvío de cmd_vel (< 0,5 s del watchdog del puente). A 10 Hz el simulador avisa \"You are sending too many messages\", por eso 0,2 s",
       "tiempo_max_sin_carril_s": "segundos: sin carril válido durante este tiempo se activa la parada operativa",
       "tiempo_max_sin_guia_s": "segundos: sin ver al guía durante este tiempo se activa la parada operativa",
       "ir_saturacion": "unidades brutas del IR: valor que se normaliza a 1",
@@ -136,7 +158,6 @@
       "ir_umbral_contacto": "adimensional [0,1]: proximidad IR normalizada que se cuenta como contacto"
     }
   },
-
   "simulacion": {
     "srv_reset": "/robobo/robot_0/sim/reset_simulation",
     "topic_pose_seguidor": "/robobo/robot_0/sim/robot_location",

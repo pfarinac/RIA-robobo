@@ -34,12 +34,14 @@ class Medidor:
         self.retardos = []
         self.ultimo = None
         self.timestamps = set()
+        self.llegadas_nuevas = []
 
     def __call__(self, msg):
         self.llegadas.append(time.monotonic())
         self.ultimo = msg
-        if hasattr(msg, 'timestamp'):
+        if hasattr(msg, 'timestamp') and msg.timestamp not in self.timestamps:
             self.timestamps.add(msg.timestamp)
+            self.llegadas_nuevas.append(self.llegadas[-1])
         cabecera = getattr(msg, 'header', None)
         if cabecera is not None and cabecera.stamp.sec:
             ahora = self.nodo.get_clock().now().nanoseconds * 1e-9
@@ -97,6 +99,18 @@ def main():
         print('  timestamps distintos: {} de {} mensajes (los repetidos son '
               'detecciones antiguas reenviadas por el puente)'.format(
                   len(objeto.timestamps), len(objeto.llegadas)))
+        if len(objeto.llegadas_nuevas) >= 2:
+            intervalos = [b - a for a, b in zip(objeto.llegadas_nuevas,
+                                                objeto.llegadas_nuevas[1:])]
+            medio, maximo = sum(intervalos) / len(intervalos), max(intervalos)
+            g = perfil.guia
+            print('  periodo entre detecciones NUEVAS: medio {:.2f} s, máx {:.2f} s'.format(
+                medio, maximo))
+            recomendado = round(1.5 * medio, 2)
+            estado = ('OK' if g.antiguedad_max_deteccion_s >= recomendado else
+                      'DEMASIADO BAJO: el guía parecerá perdido entre detecciones')
+            print('  guia.antiguedad_max_deteccion_s = {} s; recomendado >= {} s -> {}'.format(
+                g.antiguedad_max_deteccion_s, recomendado, estado))
 
     print('\n== Servicios y acciones ==')
     servicios = {n for n, _ in nodo.get_service_names_and_types()}
