@@ -141,11 +141,11 @@
     "tiempo_max_sin_guia_s": 3.0,
     "ir_saturacion": 1000.0,
     "ir_indices_frontales": [
+      0,
       1,
       2,
       3,
-      4,
-      5
+      4
     ],
     "ir_umbral_contacto": 0.85,
     "_doc": {
@@ -154,20 +154,133 @@
       "tiempo_max_sin_carril_s": "segundos: sin carril válido durante este tiempo se activa la parada operativa",
       "tiempo_max_sin_guia_s": "segundos: sin ver al guía durante este tiempo se activa la parada operativa",
       "ir_saturacion": "unidades brutas del IR: valor que se normaliza a 1",
-      "ir_indices_frontales": "lista de índices: sensores IR frontales del array base/ir",
+      "ir_indices_frontales": "lista de índices: sensores frontales en base/ir (orden del puente: FrontLL, FrontL, FrontC, FrontR, FrontRR, BackL, BackC, BackR)",
       "ir_umbral_contacto": "adimensional [0,1]: proximidad IR normalizada que se cuenta como contacto"
+    }
+  },
+  "episodio": {
+    "duracion_entrenamiento_s": 60.0,
+    "duracion_evaluacion_s": 180.0,
+    "distancia_inicial_m": [
+      0.3,
+      0.45
+    ],
+    "lateral_inicial_m": 0.03,
+    "giro_inicial_deg": 8.0,
+    "espera_tras_colocar_s": 1.0,
+    "timeout_imagen_s": 15.0,
+    "espera_real_s": 60.0,
+    "espera_percepcion_s": 15.0,
+    "observaciones_validas_reinicio": 3,
+    "intentos_colocacion": 3,
+    "_doc": {
+      "duracion_entrenamiento_s": "segundos: duración máxima de un episodio de entrenamiento (truncamiento)",
+      "duracion_evaluacion_s": "segundos: duración de un recorrido de evaluación; completarlo sin parada operativa = recorrido sin intervención",
+      "distancia_inicial_m": "[mín, máx] m: distancia centro a centro detrás del guía al colocar al seguidor (solo sim)",
+      "lateral_inicial_m": "m: desplazamiento lateral aleatorio máximo al colocar (± , solo sim)",
+      "giro_inicial_deg": "grados: giro aleatorio máximo respecto al rumbo del guía al colocar (±, solo sim)",
+      "espera_tras_colocar_s": "segundos: espera tras colocar al seguidor antes de empezar",
+      "timeout_imagen_s": "segundos: si no llega ninguna imagen en este tiempo, error (cámara caída)",
+      "espera_real_s": "segundos: en real, espera máxima a que el operador coloque al robot (guía visible y carril válido)",
+      "espera_percepcion_s": "segundos: en sim, espera máxima tras colocar a que guía y carril sean válidos (cubre la latencia de la cámara)",
+      "observaciones_validas_reinicio": "adimensional: imágenes nuevas seguidas con guía visible y carril válido para empezar el episodio",
+      "intentos_colocacion": "adimensional: en sim, recolocaciones si no se logra percepción válida"
+    }
+  },
+  "recompensa": {
+    "usar_privilegiada": true,
+    "peso_separacion": 1.0,
+    "sigma_separacion_m": 0.12,
+    "sigma_tamano": 0.08,
+    "penalizacion_guia_no_visible": 0.3,
+    "peso_carril": 0.6,
+    "penalizacion_fuera_carril": 0.5,
+    "peso_suavidad": 0.05,
+    "peso_parar": 0.5,
+    "penalizacion_fin": 20.0,
+    "_doc": {
+      "usar_privilegiada": "booleano: en simulación, usar la distancia y el lateral verdaderos en la recompensa (nunca en la observación)",
+      "peso_separacion": "recompensa/paso: máximo del término de separación (campana en la separación objetivo)",
+      "sigma_separacion_m": "m: anchura de la campana de separación",
+      "sigma_tamano": "adimensional: anchura de la campana en tamaño aparente (si no hay verdad)",
+      "penalizacion_guia_no_visible": "recompensa/paso: penalización por paso sin ver al guía",
+      "peso_carril": "recompensa/paso: máximo del término de centrado en el carril",
+      "penalizacion_fuera_carril": "recompensa/paso: penalización por paso fuera del carril",
+      "peso_suavidad": "recompensa/paso: penalización por |Δw|/dw_max",
+      "peso_parar": "recompensa/paso: premio por quedarse quieto cuando el guía está parado y cerca (C4)",
+      "penalizacion_fin": "recompensa: penalización al terminar por parada operativa o guía demasiado lejos"
+    }
+  },
+  "metricas": {
+    "separacion_objetivo_m": 0.4,
+    "semiancho_carril_m": 0.155,
+    "desplazamiento_salida": 0.5,
+    "distancia_contacto_m": 0.2,
+    "distancia_perdido_m": 1.0,
+    "avance_reanudacion_m": 0.05,
+    "tiempo_max_reanudacion_s": 10.0,
+    "v_parado_m_s": 0.01,
+    "tamano_cerca_parada": 0.15,
+    "tiempo_parada_min_s": 1.5,
+    "_doc": {
+      "separacion_objetivo_m": "m: separación deseada centro a centro con el guía",
+      "semiancho_carril_m": "m: medio ancho del carril (0,31/2 medido); con el centro del robot más lejos de la trayectoria del guía, está fuera (verdad, solo sim)",
+      "desplazamiento_salida": "anchos de carril: |desplazamiento percibido| a partir del cual se estima salida de carril (0,5 = centro del robot sobre la línea)",
+      "distancia_contacto_m": "m: distancia centro a centro por debajo de la cual hay contacto con el guía (solo sim; en real, IR)",
+      "distancia_perdido_m": "m: separación a partir de la cual termina el episodio en sim (el guía se detiene a esperar a ~1 m)",
+      "avance_reanudacion_m": "m: avance del seguidor tras reanudar el guía para dar la parada por superada",
+      "tiempo_max_reanudacion_s": "segundos: tiempo máximo para reanudar tras la parada del guía",
+      "v_parado_m_s": "m/s: velocidad enviada por debajo de la cual el seguidor se considera parado (estimación sin verdad)",
+      "tamano_cerca_parada": "adimensional: tamaño aparente mínimo del guía para considerar que el seguidor se ha parado detrás de él",
+      "tiempo_parada_min_s": "segundos: duración mínima de una parada para contarla (estimación sin verdad)"
+    }
+  },
+  "aleatorizacion": {
+    "activa": true,
+    "ruido_obs_std": 0.02,
+    "escala_v_rango": [
+      0.85,
+      1.15
+    ],
+    "escala_w_rango": [
+      0.85,
+      1.15
+    ],
+    "prob_perder_guia": 0.05,
+    "_doc": {
+      "activa": "booleano: aleatorización de dominio durante el entrenamiento (nunca en evaluación)",
+      "ruido_obs_std": "adimensional: desviación del ruido gaussiano añadido a las observaciones continuas",
+      "escala_v_rango": "[mín, máx] adimensional: factor aleatorio por episodio sobre la v enviada (incertidumbre de motores)",
+      "escala_w_rango": "[mín, máx] adimensional: factor aleatorio por episodio sobre la w enviada",
+      "prob_perder_guia": "probabilidad por paso de ocultar una detección válida del guía"
     }
   },
   "simulacion": {
     "srv_reset": "/robobo/robot_0/sim/reset_simulation",
     "topic_pose_seguidor": "/robobo/robot_0/sim/robot_location",
-    "topic_objetos": "/robobo/robot_0/sim/objects",
+    "topic_objetos": "/robobo_sim/objects",
     "id_objeto_guia": "PATHFOLLOWROBOBO",
+    "srv_colocar": "/robobo/robot_0/sim/set_robot_location",
+    "rastro_max_puntos": 5000,
+    "rastro_paso_mm": 20.0,
+    "distancia_max_rastro_mm": 400.0,
+    "ventana_velocidad_s": 2.0,
+    "v_guia_parado_m_s": 0.005,
+    "altura_robot_mm": 34.3,
+    "parada_min_s": 1.5,
     "_doc": {
       "srv_reset": "texto: servicio privilegiado de reinicio (solo simulación)",
       "topic_pose_seguidor": "texto: pose privilegiada del seguidor, solo para métricas y reinicios",
-      "topic_objetos": "texto: poses privilegiadas de los objetos, solo para métricas",
-      "id_objeto_guia": "texto: identificador del guía en RoboboSim (tomado de la P2)"
+      "topic_objetos": "texto: poses privilegiadas de los objetos (incluye al guía), solo para recompensa, métricas y reinicios",
+      "id_objeto_guia": "texto: identificador del guía en RoboboSim (tomado de la P2)",
+      "srv_colocar": "texto: servicio privilegiado para colocar al seguidor (reinicio de episodios sin reset_simulation)",
+      "rastro_max_puntos": "adimensional: puntos máximos del rastro del guía (centro del carril)",
+      "rastro_paso_mm": "mm: distancia mínima entre puntos del rastro",
+      "distancia_max_rastro_mm": "mm: si el seguidor está más lejos del rastro, el lateral verdadero es desconocido",
+      "ventana_velocidad_s": "segundos: ventana para estimar la velocidad del guía (el simulador republica la misma pose varias veces)",
+      "v_guia_parado_m_s": "m/s: por debajo, el guía se considera parado",
+      "altura_robot_mm": "mm: coordenada y al colocar al robot si aún no se conoce",
+      "parada_min_s": "segundos: tiempo por debajo de v_guia_parado_m_s para considerar que el guía se ha parado"
     }
   }
 }

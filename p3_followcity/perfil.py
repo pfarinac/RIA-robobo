@@ -44,9 +44,31 @@ CLAVES_OBLIGATORIAS = {
              'tiempo_perdido_max_s', 'suavizado_alfa'],
     'politica': ['v_min_m_s', 'v_max_m_s', 'w_max_rad_s', 'dw_max_rad_s',
                  'escala_v', 'escala_w', 'ruta_modelo', 'obs_recorte'],
-    'seguridad': ['periodo_control_s', 'tiempo_max_sin_carril_s',
-                  'tiempo_max_sin_guia_s'],
+    'seguridad': ['periodo_control_s', 'periodo_reenvio_cmd_vel_s',
+                  'tiempo_max_sin_carril_s', 'tiempo_max_sin_guia_s',
+                  'ir_saturacion', 'ir_indices_frontales', 'ir_umbral_contacto'],
+    'episodio': ['duracion_entrenamiento_s', 'duracion_evaluacion_s',
+                 'distancia_inicial_m', 'lateral_inicial_m', 'giro_inicial_deg',
+                 'espera_tras_colocar_s', 'espera_percepcion_s',
+                 'observaciones_validas_reinicio', 'intentos_colocacion',
+                 'timeout_imagen_s', 'espera_real_s'],
+    'recompensa': ['usar_privilegiada', 'peso_separacion', 'sigma_separacion_m',
+                   'sigma_tamano', 'penalizacion_guia_no_visible', 'peso_carril',
+                   'penalizacion_fuera_carril', 'peso_suavidad', 'peso_parar',
+                   'penalizacion_fin'],
+    'metricas': ['separacion_objetivo_m', 'semiancho_carril_m', 'desplazamiento_salida',
+                 'distancia_contacto_m', 'distancia_perdido_m', 'avance_reanudacion_m',
+                 'tiempo_max_reanudacion_s', 'v_parado_m_s', 'tamano_cerca_parada',
+                 'tiempo_parada_min_s'],
+    'aleatorizacion': ['activa', 'ruido_obs_std', 'escala_v_rango', 'escala_w_rango',
+                       'prob_perder_guia'],
 }
+
+# Claves obligatorias de la sección simulacion (solo perfiles de simulación).
+CLAVES_SIMULACION = ['topic_objetos', 'topic_pose_seguidor', 'srv_colocar',
+                     'id_objeto_guia', 'rastro_max_puntos', 'rastro_paso_mm',
+                     'distancia_max_rastro_mm', 'ventana_velocidad_s',
+                     'v_guia_parado_m_s', 'parada_min_s', 'altura_robot_mm']
 
 METRICAS_TAMANO = ('raiz_area', 'altura', 'ancho')
 
@@ -214,8 +236,17 @@ def _validar(datos, ruta):
         (s['periodo_control_s'] > 0, 'seguridad.periodo_control_s <= 0'),
     ]
     fallos = [msg for ok, msg in comprobaciones if not ok]
-    if datos['es_simulacion'] and not isinstance(datos.get('simulacion'), dict):
-        fallos.append('un perfil de simulación necesita la sección simulacion')
+    if datos['es_simulacion']:
+        if not isinstance(datos.get('simulacion'), dict):
+            fallos.append('un perfil de simulación necesita la sección simulacion')
+        else:
+            fallos += ["falta 'simulacion.{}'".format(c) for c in CLAVES_SIMULACION
+                       if c not in datos['simulacion']]
+    ep, me = datos['episodio'], datos['metricas']
+    if not (0 < ep['distancia_inicial_m'][0] <= ep['distancia_inicial_m'][1]):
+        fallos.append('episodio.distancia_inicial_m debe ser [mín, máx] positivos')
+    if not (me['distancia_contacto_m'] < me['separacion_objetivo_m'] < me['distancia_perdido_m']):
+        fallos.append('metricas: se requiere contacto < separación objetivo < perdido')
     if fallos:
         raise ErrorPerfil('Perfil {} incoherente:\n  - {}'.format(
             ruta, '\n  - '.join(fallos)))
