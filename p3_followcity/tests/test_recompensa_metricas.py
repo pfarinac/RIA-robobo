@@ -81,19 +81,23 @@ def test_parada_superada_con_verdad():
         e.actualizar_metricas(paso(t=t, distancia_m=0.4, lateral_m=0.0, guia_parado=False)); t += PERIODO
     for _ in range(10):                    # guía parado, seguidor quieto sin contacto
         e.actualizar_metricas(paso(t=t, v=0.0, distancia_m=0.35, lateral_m=0.0, guia_parado=True)); t += PERIODO
-    for _ in range(10):                    # guía reanuda, seguidor avanza
-        e.actualizar_metricas(paso(t=t, v=0.08, distancia_m=0.4, lateral_m=0.0, guia_parado=False)); t += PERIODO
+    for _ in range(10):                    # guía reanuda: aún no han pasado 10 s
+        e.actualizar_metricas(paso(t=t, v=0.08, distancia_m=0.3, lateral_m=0.0, guia_parado=False)); t += PERIODO
+    assert e.resumen(completado=False)['paradas_superadas'] == 0
+    for _ in range(int(P.metricas.tiempo_sin_fallo_tras_reanudar_s / PERIODO)):
+        e.actualizar_metricas(paso(t=t, v=0.08, distancia_m=0.3, lateral_m=0.0, guia_parado=False)); t += PERIODO
     r = e.resumen(completado=True)
     assert r['paradas_guia'] == 1 and r['paradas_superadas'] == 1
+    assert r['separacion_en_banda_pct_pasos'] == 100.0
 
 
 def test_parada_no_superada_si_hay_contacto():
     e = Evaluador(P)
     t = 0.0
-    for d in (0.4, 0.3, 0.15, 0.3):        # se para el guía y el seguidor le toca
+    for d in (0.4, 0.3, 0.10, 0.3):        # se para el guía y el seguidor le toca
         e.actualizar_metricas(paso(t=t, v=0.05, distancia_m=d, lateral_m=0.0, guia_parado=True)); t += PERIODO
-    for _ in range(10):
-        e.actualizar_metricas(paso(t=t, v=0.08, distancia_m=0.4, lateral_m=0.0, guia_parado=False)); t += PERIODO
+    for _ in range(int(12 / PERIODO)):
+        e.actualizar_metricas(paso(t=t, v=0.08, distancia_m=0.3, lateral_m=0.0, guia_parado=False)); t += PERIODO
     r = e.resumen(completado=False)
     assert r['paradas_guia'] == 1 and r['paradas_superadas'] == 0 and r['contactos'] == 1
 
@@ -103,7 +107,7 @@ def test_parada_estimada_sin_verdad():
     e = Evaluador(P)
     t = 0.0
     for _ in range(int(2.0 / PERIODO)):
-        e.actualizar_metricas(paso(t=t, v=0.0, tam=0.25)); t += PERIODO
+        e.actualizar_metricas(paso(t=t, v=0.0, tam=P.metricas.tamano_cerca_parada + 0.05)); t += PERIODO
     for _ in range(3):
         e.actualizar_metricas(paso(t=t, v=P.politica.v_max_m_s, tam=0.2)); t += PERIODO
     r = e.resumen(completado=True)

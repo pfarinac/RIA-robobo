@@ -44,15 +44,26 @@ guía sin ver durante ``tiempo_max_sin_guia_s`` o carril sin validar durante
 ``tiempo_max_sin_carril_s``. Se detiene el robot y termina el episodio. En
 evaluación cuenta como intervención (recorrido no completado).
 
-Reinicio: en simulación se coloca al seguidor detrás del guía con
-``set_robot_location`` (no ``reset_simulation``, que deja la cámara del
-puente sin imagen). En real se detiene el robot y se espera a que el operador
-lo coloque detrás del guía (guía visible y carril válido).
+Fin de episodio (protocolo del anexo B de la P2): colisión (separación
+< 0,12 m), guía perdido (separación > 0,90 m o sin verlo > 3 s), parada
+operativa por carril, o fin del tiempo (60 s entrenamiento, 120 s evaluación).
+
+Reinicio: en simulación SIEMPRE con ``reset_simulation`` (modo_reinicio
+"reset_simulation"): guía y seguidor vuelven a la posición inicial de la
+escena y el seguidor parte parado; el guía no arranca hasta que el seguidor se
+le acerca. Tras el reinicio se vuelve a fijar el tilt y se comprueba que el
+robot responde y que llegan imágenes nuevas; si el reinicio ha roto las
+conexiones del puente, el propio entorno lo relanza (puente.py,
+``simulacion.gestionar_puente``), sin intervención. Después se espera a ver
+guía y carril. (modo "colocar": solo depuración.)
+En real se detiene el robot y se espera a que el operador lo coloque detrás
+del guía (guía visible y carril válido).
 """
 
 import math
 import random
 import time
+from pathlib import Path
 
 import gymnasium as gym
 import numpy as np
@@ -81,7 +92,8 @@ class FollowCityP3Env(gym.Env):
     metadata = {'render_modes': []}
 
     def __init__(self, perfil, modo='entrenamiento', configuracion='C4',
-                 carpeta_registros=None, etiqueta='p3', semilla=None, verbose=False):
+                 carpeta_registros=None, etiqueta='p3', semilla=None, verbose=False,
+                 ip_puente=None, puente_externo=False):
         """
         perfil: Perfil cargado con perfil.cargar_perfil().
         modo: 'entrenamiento' (episodios cortos, aleatorización activa) o
@@ -89,6 +101,10 @@ class FollowCityP3Env(gym.Env):
         configuracion: C1-C4, solo se anota en los registros (la escena se
               configura en el simulador o la programa el profesorado en real).
         carpeta_registros: si se indica, se guardan pasos.csv y episodios.csv.
+        ip_puente: IP del simulador para el puente que lanza el entorno (por
+              defecto simulacion.puente_ip del perfil).
+        puente_externo: no lanzar el puente (ya lanzado a mano); entonces un
+              reinicio que lo rompa termina con error.
         """
         super().__init__()
         self.perfil, self.modo, self.configuracion = perfil, modo, configuracion
@@ -114,9 +130,13 @@ class FollowCityP3Env(gym.Env):
         self.guia = SuscriptorGuia(self.nodo, perfil, log=self._log)
         self.carril = SuscriptorCarril(self.nodo, perfil)
         self.sim = None
+        self.gestor = None
+        self.relanzamientos_puente = 0
         if perfil.es_simulacion:
             from sim_privilegiado import SimPrivilegiado
             self.sim = SimPrivilegiado(self.nodo, perfil)
+            if perfil.simulacion.gestionar_puente and not puente_externo:
+                self._arrancar_puente(ip_puente, carpeta_registros)
         self.evaluador = Evaluador(perfil)
         self.registros = Registros(carpeta_registros, '{}_{}_{}'.format(etiqueta, modo, configuracion)) \
             if carpeta_registros else None
@@ -130,6 +150,7 @@ class FollowCityP3Env(gym.Env):
         self.factor_v = self.factor_w = 1.0
         self._t_ep = time.monotonic()
         self._fin_registrado = True
+        self.guardar_imagenes_cada = 0      # >0: guarda 1 imagen de diagnóstico cada N pasos
         self._mover_tilt()
 
     def configurar(self, modo=None, carpeta_registros=None, etiqueta='p3', configuracion=None):
@@ -181,19 +202,66 @@ class FollowCityP3Env(gym.Env):
             self._spin(0.05)
 
     def _mover_tilt(self):
+        """Fija el tilt del perfil. Devuelve True si el puente lo confirma: sirve
+        también para saber si la conexión de control con el robot sigue viva."""
         try:
             from robobo_ros2_interfaces.srv import MoveTilt
         except ImportError:
-            return
+            return True
         cam = self.perfil.camara
-        cli = self.nodo.create_client(MoveTilt, self.perfil.topic('accion_tilt'))
+        if getattr(self, '_cli_tilt', None) is None:
+            self._cli_tilt = self.nodo.create_client(MoveTilt, self.perfil.topic('accion_tilt'))
+        cli = self._cli_tilt
         if not cli.wait_for_service(timeout_sec=5.0):
-            self._log('Aviso: no responde move_tilt; el tilt no se ha fijado.')
-            return
+            return False
         pet = MoveTilt.Request()
         pet.angle, pet.speed = float(cam.tilt_deg), float(cam.tilt_velocidad_deg_s)
         fut = cli.call_async(pet)
         rclpy.spin_until_future_complete(self.nodo, fut, timeout_sec=cam.timeout_movimiento_s)
+        return fut.done() and fut.result() is not None
+
+    # ------------------------------------------------------------------
+    # Puente (solo simulación)
+    # ------------------------------------------------------------------
+    def _arrancar_puente(self, ip, carpeta_registros):
+        from puente import GestorPuente
+        from robobo_ros2_interfaces.srv import ResetSimulation
+        cfg = self.perfil.simulacion
+        cli = self.nodo.create_client(ResetSimulation, cfg.srv_reset)
+        if cli.wait_for_service(timeout_sec=2.0):
+            raise RuntimeError(
+                'Ya hay un puente robobo_ros2 en marcha. Este script lanza y relanza su propio '
+                'puente (simulacion.gestionar_puente): cerrad el otro (Ctrl+C) y volved a '
+                'lanzar, o pasad --puente-externo para usar el vuestro.')
+        self.nodo.destroy_client(cli)
+        ruta_log = Path(carpeta_registros or 'registros') / 'puente.log'
+        self.gestor = GestorPuente(cfg, ip=ip, ruta_log=ruta_log, log=print)
+        self._relanzar_puente(primera_vez=True)
+
+    def _robot_responde(self, timeout_imagen_s):
+        """Control vivo (move_tilt confirmado) e imágenes nuevas llegando."""
+        if not self._mover_tilt():
+            return False, 'move_tilt sin respuesta'
+        if not self.carril.esperar_imagen(timeout_imagen_s, lambda: self._spin(0.02)):
+            return False, 'sin imágenes nuevas'
+        return True, ''
+
+    def _relanzar_puente(self, primera_vez=False):
+        cfg = self.perfil.simulacion
+        for intento in range(3):
+            self.gestor.lanzar()
+            limite = time.monotonic() + cfg.puente_timeout_s
+            motivo = 'no arranca'
+            while time.monotonic() < limite and self.gestor.vivo():
+                ok, motivo = self._robot_responde(5.0)
+                if ok:
+                    if not primera_vez:
+                        self.relanzamientos_puente += 1
+                    return
+            self._log('Puente sin respuesta ({}), reintento {}'.format(motivo, intento + 1))
+        raise RuntimeError('El puente no responde tras 3 lanzamientos. Revisad que el simulador '
+                           'está abierto en Follow City y {}'.format(
+                               self.gestor.ruta_log or 'el registro del puente'))
 
     def _ir_frontal(self):
         s = self.perfil.seguridad
@@ -207,7 +275,8 @@ class FollowCityP3Env(gym.Env):
     # ------------------------------------------------------------------
     def _observar(self):
         og = self.guia.observar()
-        oc = self.carril.observar()
+        zona = self.guia.percepcion.zona_exclusion()
+        oc = self.carril.observar(excluir=[zona] if zona else None)
         if self.aleatorizar and og.visible and self.rng.random() < self.perfil.aleatorizacion.prob_perder_guia:
             og.visible, og.x, og.tamano = 0.0, 0.0, 0.0      # detección perdida simulada
         ir = self._ir_frontal()
@@ -250,13 +319,41 @@ class FollowCityP3Env(gym.Env):
         if self.sim is not None:
             if not self.sim.esperar(10.0, lambda: self._spin(0.05)):
                 raise RuntimeError('No llegan las poses del simulador (¿módulo sim del puente?).')
-            for intento in range(int(ep.intentos_colocacion)):
-                info.update(self.sim.colocar_detras_del_guia(self.rng))
-                self._spin(ep.espera_tras_colocar_s)
-                if self._esperar_percepcion(ep.espera_percepcion_s):
+            cfg = self.perfil.simulacion
+            listo = False
+            for intento in range(int(ep.intentos_reinicio)):
+                if cfg.modo_reinicio == 'reset_simulation':
+                    if not self.sim.reiniciar_simulacion():
+                        self._log('Aviso: reset_simulation no confirmó el reinicio')
+                    self._spin(cfg.espera_tras_reset_s)
+                    # El reinicio devuelve el tilt a su valor por defecto y puede cortar
+                    # las conexiones del puente: se fija el tilt y se comprueba todo.
+                    ok, fallo = self._robot_responde(cfg.timeout_imagen_tras_reset_s)
+                    if not ok:
+                        if self.gestor is None:
+                            raise RuntimeError(
+                                'Tras reset_simulation el puente no responde ({}). Lanzad el '
+                                'script sin --puente-externo para que lo relance solo.'.format(fallo))
+                        self._log('Tras el reinicio: {}; se relanza el puente'.format(fallo))
+                        self._relanzar_puente()
+                    self.sim.olvidar()          # descarta poses de antes del reinicio
+                    if not self.sim.esperar(10.0, lambda: self._spin(0.05)):
+                        raise RuntimeError('No llegan las poses del simulador tras el reinicio.')
+                else:
+                    info.update(self.sim.colocar_detras_del_guia(self.rng))
+                    self._spin(ep.espera_tras_colocar_s)
+                listo = self._esperar_percepcion(ep.espera_percepcion_s)
+                if listo:
                     break
-                self._log('Intento de colocación {} sin percepción válida'.format(intento + 1))
-            info['intentos_colocacion'] = intento + 1
+                self._log('Reinicio {} sin guía y carril válidos'.format(intento + 1))
+            if not listo:
+                print('Aviso: el episodio empieza sin guía o carril válidos.', flush=True)
+                self.guia.reiniciar()
+                self.carril.reiniciar()
+            info['intentos_reinicio'] = intento + 1
+            info['relanzamientos_puente'] = self.relanzamientos_puente
+            m = self.sim.medir()
+            info['separacion_inicial_m'] = m.distancia_m
         else:
             print('Coloca el seguidor detrás del guía, en su carril...', flush=True)
             if not self._esperar_percepcion(ep.espera_real_s):
@@ -299,8 +396,8 @@ class FollowCityP3Env(gym.Env):
                 if time.monotonic() >= limite:
                     break
                 raise RuntimeError(
-                    'No llegan imágenes de {} en {} s. Si se usó reset_simulation hay que '
-                    'relanzar el puente (la cámara no reconecta).'.format(
+                    'No llegan imágenes de {} en {} s. ¿Puente lanzado con el módulo camera? '
+                    '(revisad registros/.../puente.log)'.format(
                         self.perfil.topic('topic_imagen'), ep.timeout_imagen_s))
             ok = self.guia.observar().visible and self.carril.observar().valido
             seguidas = seguidas + 1 if ok else 0
@@ -368,9 +465,12 @@ class FollowCityP3Env(gym.Env):
                      'cmd_v_m_s': v, 'cmd_w_rad_s': w,
                      'cmd_v_enviada_m_s': v * self.perfil.politica.escala_v * self.factor_v,
                      'cmd_w_enviada_rad_s': w * self.perfil.politica.escala_w * self.factor_w})
+        b = og.bruta or {}
         fila.update({'guia_visible': og.visible, 'guia_confianza': og.confianza,
                      'guia_motivo_invalida': og.motivo_invalida, 'guia_edad_s': None
-                     if math.isinf(og.edad_s) else og.edad_s})
+                     if math.isinf(og.edad_s) else og.edad_s,
+                     'guia_x_px': b.get('x_px'), 'guia_y_px': b.get('y_px'),
+                     'guia_ancho_px': b.get('ancho_px'), 'guia_alto_px': b.get('alto_px')})
         fila.update(oc.registro() if isinstance(oc, ObservacionCarril) else {})
         fila.update({'ir_frontal': ir, 'recompensa': r,
                      'fuera_carril_verdad': None if verdad is None else int(verdad),
@@ -381,6 +481,30 @@ class FollowCityP3Env(gym.Env):
                      'priv_guia_velocidad_m_s': priv.guia_velocidad_m_s,
                      'motivo_fin': motivo})
         self.registros.pasos.escribir(fila)
+        if self.guardar_imagenes_cada and self.pasos % self.guardar_imagenes_cada == 0:
+            self._guardar_imagen(og, oc, v, w)
+
+    def _guardar_imagen(self, og, oc, v, w):
+        """Imagen con la detección del carril y del guía dibujadas (diagnóstico)."""
+        import cv2
+        from percepcion_carril import PercepcionCarril
+        img, _ = self.carril.ultima_imagen()
+        if img is None:
+            return
+        img = PercepcionCarril.dibujar(img, oc)
+        b = og.bruta or {}
+        if b:
+            x, y, an, al = b['x_px'], b['y_px'], b['ancho_px'], b['alto_px']
+            color = (0, 0, 255) if og.visible else (128, 128, 128)
+            cv2.rectangle(img, (int(x - an / 2), int(y - al / 2)), (int(x + an / 2), int(y + al / 2)), color, 2)
+        alto = img.shape[0]
+        cv2.rectangle(img, (0, alto - 22), (img.shape[1], alto), (0, 0, 0), -1)
+        cv2.putText(img, 'ep{} p{} guia vis={:.0f} tam={:.2f} | v={:.2f} w={:+.2f}'.format(
+            self.episodio, self.pasos, og.visible, og.tamano, v, w), (4, alto - 6),
+            cv2.FONT_HERSHEY_SIMPLEX, 0.42, (255, 255, 255), 1)
+        carpeta = self.registros.carpeta / 'imagenes'
+        carpeta.mkdir(parents=True, exist_ok=True)
+        cv2.imwrite(str(carpeta / 'ep{:03d}_p{:04d}.jpg'.format(self.episodio, self.pasos)), img)
 
     def _cerrar_episodio(self, completado, motivo):
         if self._fin_registrado:
@@ -413,4 +537,6 @@ class FollowCityP3Env(gym.Env):
             self.nodo.destroy_node()
         except Exception:
             pass
+        if self.gestor is not None:
+            self.gestor.parar()
         super().close()

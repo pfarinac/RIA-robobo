@@ -2,9 +2,10 @@
 
 Nada de este módulo llega a la observación de la política. Se usa para:
 
-- reiniciar episodios colocando al seguidor detrás del guía (en lugar de
-  ``reset_simulation``, que en el puente actual deja la cámara sin imagen
-  hasta relanzarlo, y además obliga a esperar a que el guía arranque),
+- reiniciar episodios con ``reset_simulation`` (ambos robots vuelven a la
+  posición inicial de la escena, protocolo del anexo B de la P2),
+- (opcional, solo depuración) colocar al seguidor detrás del guía con
+  ``set_robot_location``,
 - la recompensa de entrenamiento (si ``recompensa.usar_privilegiada``),
 - las métricas de verdad en simulación: distancia al guía, desplazamiento
   lateral respecto al centro del carril y paradas del guía.
@@ -25,7 +26,7 @@ from collections import deque
 
 import rclpy
 from robobo_ros2_interfaces.msg import RobotLocation, SimObjectArray
-from robobo_ros2_interfaces.srv import SetRobotLocation
+from robobo_ros2_interfaces.srv import ResetSimulation, SetRobotLocation
 
 from recompensa_metricas import Privilegiada
 
@@ -46,9 +47,29 @@ class SimPrivilegiado:
         self.rastro = deque(maxlen=int(cfg.rastro_max_puntos))
         self._hist_guia = deque()   # (t, x, z) para la velocidad del guía
         self._desde_lento = None    # instante desde el que el guía va por debajo del umbral
+        self.guia_arrancado = False
         nodo.create_subscription(SimObjectArray, cfg.topic_objetos, self._cb_objetos, 1)
         nodo.create_subscription(RobotLocation, cfg.topic_pose_seguidor, self._cb_seguidor, 1)
         self.cli_colocar = nodo.create_client(SetRobotLocation, cfg.srv_colocar)
+        self.cli_reset = nodo.create_client(ResetSimulation, cfg.srv_reset)
+
+    def olvidar(self):
+        """Descarta poses, rastro e historial (tras reiniciar la escena)."""
+        self.guia = self.guia_rumbo = self.seg = self.seg_rumbo = None
+        self.rastro.clear()
+        self._hist_guia.clear()
+        self._desde_lento = None
+        self.guia_arrancado = False
+
+    def reiniciar_simulacion(self, timeout_s=15.0):
+        """Llama a ``reset_simulation``: guía y seguidor a la posición inicial."""
+        if not self.cli_reset.wait_for_service(timeout_sec=5.0):
+            raise RuntimeError('No responde {} (¿módulo sim del puente?)'.format(self.cfg.srv_reset))
+        fut = self.cli_reset.call_async(ResetSimulation.Request())
+        rclpy.spin_until_future_complete(self.nodo, fut, timeout_sec=timeout_s)
+        ok = fut.done() and fut.result() is not None and fut.result().success
+        self.olvidar()
+        return bool(ok)
 
     # ------------------------------------------------------------------
     def _cb_objetos(self, msg):
@@ -97,6 +118,11 @@ class SimPrivilegiado:
         vel = self.velocidad_guia_m_s()
         if vel is None:
             return None, None
+        if not self.guia_arrancado:
+            # Al empezar, el guía espera quieto a que el seguidor se acerque: eso no
+            # es una parada de C4. Las paradas cuentan desde que arranca por primera vez.
+            self.guia_arrancado = vel >= 2.0 * self.cfg.v_guia_parado_m_s
+            return (False if self.guia_arrancado else None), vel
         ahora = time.monotonic()
         if vel < self.cfg.v_guia_parado_m_s:
             if self._desde_lento is None:
@@ -135,12 +161,26 @@ class SimPrivilegiado:
             return None     # sin rastro cerca (aún no se ha recorrido ese tramo)
         return mejor[0] * mejor[1] / 1000.0
 
+    def punto_referencia(self):
+        """Punto ``punto_referencia_detras_m`` detrás del centro del guía (anexo B de
+        la P2: la pelota verde estaba 0,08 m detrás; sin pelota se usa ese punto
+        sobre la pose del guía, como permite la nota del anexo)."""
+        d = self.cfg.punto_referencia_detras_m * 1000.0
+        th = math.radians(self.guia_rumbo or 0.0)
+        return self.guia[0] - d * math.sin(th), self.guia[1] - d * math.cos(th)
+
     def medir(self):
         if not self.listo():
             return Privilegiada()
         parado, vel = self.guia_parado()
+        ref = self.punto_referencia()
+        dx, dz = ref[0] - self.seg[0], ref[1] - self.seg[1]
+        desv = None
+        if self.seg_rumbo is not None and math.hypot(dx, dz) > 1.0:
+            desv = (math.degrees(math.atan2(dx, dz)) - self.seg_rumbo + 180.0) % 360.0 - 180.0
         return Privilegiada(
-            distancia_m=math.dist(self.seg, self.guia) / 1000.0,
+            distancia_m=math.hypot(dx, dz) / 1000.0,
+            desviacion_deg=desv,
             lateral_m=self.lateral_m(),
             guia_parado=parado,
             guia_velocidad_m_s=vel)

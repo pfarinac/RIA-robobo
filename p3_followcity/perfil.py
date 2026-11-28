@@ -48,24 +48,25 @@ CLAVES_OBLIGATORIAS = {
                   'tiempo_max_sin_carril_s', 'tiempo_max_sin_guia_s',
                   'ir_saturacion', 'ir_indices_frontales', 'ir_umbral_contacto'],
     'episodio': ['duracion_entrenamiento_s', 'duracion_evaluacion_s',
-                 'distancia_inicial_m', 'lateral_inicial_m', 'giro_inicial_deg',
-                 'espera_tras_colocar_s', 'espera_percepcion_s',
-                 'observaciones_validas_reinicio', 'intentos_colocacion',
+                 'espera_percepcion_s', 'observaciones_validas_reinicio', 'intentos_reinicio',
                  'timeout_imagen_s', 'espera_real_s'],
     'recompensa': ['usar_privilegiada', 'peso_separacion', 'sigma_separacion_m',
                    'sigma_tamano', 'penalizacion_guia_no_visible', 'peso_carril',
                    'penalizacion_fuera_carril', 'peso_suavidad', 'peso_parar',
                    'penalizacion_fin'],
     'metricas': ['separacion_objetivo_m', 'semiancho_carril_m', 'desplazamiento_salida',
-                 'distancia_contacto_m', 'distancia_perdido_m', 'avance_reanudacion_m',
-                 'tiempo_max_reanudacion_s', 'v_parado_m_s', 'tamano_cerca_parada',
+                 'distancia_contacto_m', 'distancia_perdido_m', 'banda_objetivo_m',
+                 'tiempo_sin_fallo_tras_reanudar_s', 'v_parado_m_s', 'tamano_cerca_parada',
                  'tiempo_parada_min_s'],
     'aleatorizacion': ['activa', 'ruido_obs_std', 'escala_v_rango', 'escala_w_rango',
                        'prob_perder_guia'],
 }
 
 # Claves obligatorias de la sección simulacion (solo perfiles de simulación).
-CLAVES_SIMULACION = ['topic_objetos', 'topic_pose_seguidor', 'srv_colocar',
+CLAVES_SIMULACION = ['modo_reinicio', 'srv_reset', 'espera_tras_reset_s', 'punto_referencia_detras_m',
+                     'gestionar_puente', 'puente_ip', 'puente_modulos', 'puente_timeout_s',
+                     'timeout_imagen_tras_reset_s',
+                     'topic_objetos', 'topic_pose_seguidor', 'srv_colocar',
                      'id_objeto_guia', 'rastro_max_puntos', 'rastro_paso_mm',
                      'distancia_max_rastro_mm', 'ventana_velocidad_s',
                      'v_guia_parado_m_s', 'parada_min_s', 'altura_robot_mm']
@@ -229,7 +230,7 @@ def _validar(datos, ruta):
         (g['tiempo_perdido_max_s'] > 0, 'guia.tiempo_perdido_max_s <= 0'),
         (0.0 <= p['v_min_m_s'] <= p['v_max_m_s'], 'politica: se requiere 0 <= v_min <= v_max'),
         (p['w_max_rad_s'] > 0 and p['dw_max_rad_s'] > 0, 'politica: w_max y dw_max deben ser positivos'),
-        (p['escala_v'] > 0 and p['escala_w'] > 0, 'politica: escalas de motor no positivas'),
+        (p['escala_v'] > 0 and p['escala_w'] != 0, 'politica: escala_v debe ser > 0 y escala_w distinta de 0'),
         (c['antiguedad_max_imagen_s'] > 0, 'camara.antiguedad_max_imagen_s <= 0'),
         (0.0 <= k['roi_y_inicio_frac'] < k['roi_y_fin_frac'] <= 1.0,
          'carril: se requiere 0 <= roi_y_inicio < roi_y_fin <= 1'),
@@ -243,8 +244,18 @@ def _validar(datos, ruta):
             fallos += ["falta 'simulacion.{}'".format(c) for c in CLAVES_SIMULACION
                        if c not in datos['simulacion']]
     ep, me = datos['episodio'], datos['metricas']
-    if not (0 < ep['distancia_inicial_m'][0] <= ep['distancia_inicial_m'][1]):
-        fallos.append('episodio.distancia_inicial_m debe ser [mín, máx] positivos')
+    sim = datos.get('simulacion') or {}
+    if datos['es_simulacion'] and sim.get('modo_reinicio') not in ('reset_simulation', 'colocar'):
+        fallos.append("simulacion.modo_reinicio debe ser 'reset_simulation' o 'colocar'")
+    if sim.get('modo_reinicio') == 'colocar':
+        faltan = [k for k in ('distancia_inicial_m', 'lateral_inicial_m', 'giro_inicial_deg',
+                              'espera_tras_colocar_s') if k not in ep]
+        if faltan:
+            fallos.append('modo_reinicio colocar necesita episodio.' + ', episodio.'.join(faltan))
+        elif not (0 < ep['distancia_inicial_m'][0] <= ep['distancia_inicial_m'][1]):
+            fallos.append('episodio.distancia_inicial_m debe ser [mín, máx] positivos')
+    if not (me['banda_objetivo_m'][0] <= me['separacion_objetivo_m'] <= me['banda_objetivo_m'][1]):
+        fallos.append('metricas: la separación objetivo debe estar dentro de la banda')
     if not (me['distancia_contacto_m'] < me['separacion_objetivo_m'] < me['distancia_perdido_m']):
         fallos.append('metricas: se requiere contacto < separación objetivo < perdido')
     if fallos:

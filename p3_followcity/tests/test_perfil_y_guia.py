@@ -80,8 +80,8 @@ def test_normalizacion_basica():
     assert p.actualizar(det(x=240), t_llegada=0.0)
     o = p.observar(0.1)
     assert o.visible == 1.0 and abs(o.x) < 1e-9 and o.tiempo_perdido == 0.0
-    # raiz_area: sqrt(64·48)/sqrt(480·640) = 0.1
-    assert abs(o.tamano - 0.1) < 1e-9
+    # ancho (métrica del perfil): 64/480
+    assert abs(o.tamano - 64 / 480) < 1e-9
     assert len(o.vector()) == len(COMPONENTES_OBS_GUIA)
     p.actualizar(det(x=0, ts=2), 0.2)
     assert p.observar(0.2).x == -1.0
@@ -92,7 +92,7 @@ def test_normalizacion_basica():
 def test_metricas_y_escala():
     assert abs(percepcion(metrica_tamano='altura').tamano_aparente(64, 64) - 0.1) < 1e-9
     assert abs(percepcion(metrica_tamano='ancho').tamano_aparente(48, 64) - 0.1) < 1e-9
-    assert abs(percepcion(escala_tamano=2.0).tamano_aparente(64, 48) - 0.2) < 1e-9
+    assert abs(percepcion(metrica_tamano='raiz_area', escala_tamano=2.0).tamano_aparente(64, 48) - 0.2) < 1e-9
     assert percepcion(escala_tamano=50.0).tamano_aparente(480, 640) == 1.0
 
 

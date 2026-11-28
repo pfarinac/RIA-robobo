@@ -14,13 +14,14 @@ política SAC, así que sirve para dos cosas:
    percepción, para comparar con lo aprendido.
 
 Reglas:
-- Giro: *pure pursuit* sobre el punto adelantado del centro del carril
-  (componente ``carril_angulo``), más una corrección hacia el guía cuando se
-  ve. Con w > 0 a la izquierda (ROS), un punto a la derecha (ángulo > 0) pide
-  w < 0.
-- Velocidad: proporcional al error de tamaño aparente del guía respecto al
-  objetivo (más pequeño = más lejos = más rápido). Se detiene si está
-  demasiado cerca, si hay proximidad IR o si no hay carril válido.
+- Giro: si se ve al guía, se apunta hacia él (componente ``guia_x``) con una
+  corrección menor de *pure pursuit* sobre el punto adelantado del centro del
+  carril (``carril_angulo``); si no se ve, solo el carril. Con w > 0 a la
+  izquierda (ROS), un punto a la derecha (> 0) pide w < 0.
+- Velocidad: velocidad de crucero más un término proporcional al error de
+  tamaño aparente del guía (más pequeño = más lejos = más rápido). Frena de
+  forma progresiva al acercarse y solo se detiene si está demasiado cerca o
+  hay proximidad IR. Sin guía visible avanza despacio por el carril.
 """
 
 import numpy as np
@@ -31,8 +32,8 @@ I_VALIDEZ, I_DESP, I_ANG, I_SIN_CARRIL, I_IR = 5, 6, 7, 8, 9
 
 
 class ControladorHeuristico:
-    def __init__(self, perfil, ganancia_carril=1.6, ganancia_guia=0.5,
-                 ganancia_tamano=2.5, v_crucero_m_s=0.12, v_buscar_m_s=0.05):
+    def __init__(self, perfil, ganancia_carril=1.2, ganancia_guia=1.0,
+                 ganancia_tamano=1.0, v_crucero_m_s=0.15, v_buscar_m_s=0.06):
         p = perfil.politica
         self.v_min, self.v_max = p.v_min_m_s, p.v_max_m_s
         self.tam_obj = perfil.guia.tamano_objetivo_norm
@@ -51,10 +52,11 @@ class ControladorHeuristico:
         carril = obs[I_VALIDEZ] > 0.0
 
         # Giro (acción normalizada: a1 = w / w_max).
-        giro = -self.k_carril * obs[I_ANG] if carril else 0.0
         if visible:
-            giro += -self.k_guia * obs[I_GX]
-        elif not carril:
+            giro = -self.k_guia * obs[I_GX] - (0.4 * self.k_carril * obs[I_ANG] if carril else 0.0)
+        elif carril:
+            giro = -self.k_carril * obs[I_ANG]
+        else:
             giro = -0.5 * np.sign(obs[I_GX_ULT])     # buscar hacia donde se perdió
 
         # Velocidad.

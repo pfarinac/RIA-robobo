@@ -29,7 +29,9 @@ def _recortar(v, a, b):
 @dataclass
 class Privilegiada:
     """Verdad del simulador en un paso (todo None si no hay simulador)."""
-    distancia_m: float = None          # centro a centro, seguidor-guía
+    distancia_m: float = None          # separación del anexo B: centro del seguidor al punto
+                                       # de referencia (0,08 m detrás del centro del guía)
+    desviacion_deg: float = None       # rumbo del seguidor vs dirección al punto de referencia
     lateral_m: float = None            # > 0 seguidor a la derecha de la trayectoria del guía
     guia_parado: bool = None
     guia_velocidad_m_s: float = None
@@ -80,6 +82,7 @@ class Evaluador:
         self._parada_est = None
         self.motivo_fin = ''
         self.separaciones = []
+        self.desviaciones = []
 
     # ------------------------------------------------------------------
     # Condiciones
@@ -173,32 +176,44 @@ class Evaluador:
         self._en_contacto = c
         if paso.priv.distancia_m is not None:
             self.separaciones.append(paso.priv.distancia_m)
+        if paso.priv.desviacion_deg is not None:
+            self.desviaciones.append(abs(paso.priv.desviacion_deg))
 
         self._paradas_verdad(paso)
         self._paradas_estimadas(paso)
 
     def _paradas_verdad(self, paso):
-        """Parada superada (sim): el guía se para, no hay contacto mientras dura,
-        y tras reanudar la marcha el seguidor avanza sin contacto."""
+        """Paradas del guía con la verdad del simulador (anexo B de la P2).
+
+        Parada: el guía va a menos de ``v_guia_parado_m_s`` durante más de
+        ``parada_min_s`` (lo decide SimPrivilegiado). Superada: no hay contacto
+        mientras dura y el seguidor sigue sin fallo ``tiempo_sin_fallo_tras_reanudar_s``
+        después de que el guía reanude. Si el episodio termina antes (contacto,
+        guía perdido...), la parada queda sin superar.
+        """
         parado = paso.priv.guia_parado
         if parado is None:
             return
         st = self._parada
         if parado and st is None:
-            self._parada = {'inicio': paso.t, 'contacto': False, 'reanudada': None, 'avance': 0.0}
+            self._parada = {'inicio': paso.t, 'contacto': False, 'reanudada': None}
             self.paradas_guia += 1
-        elif st is not None:
-            st['contacto'] |= self.contacto(paso)
-            if not parado and st['reanudada'] is None:
-                st['reanudada'] = paso.t
+            return
+        if st is None:
+            return
+        st['contacto'] |= self.contacto(paso)
+        if parado and st['reanudada'] is not None:
+            st['reanudada'] = None          # se vuelve a parar antes de cumplir el plazo: misma parada
+        elif not parado and st['reanudada'] is None:
+            st['reanudada'] = paso.t
+        if st['contacto']:
             if st['reanudada'] is not None:
-                st['avance'] += paso.v * self.s.periodo_control_s
-                if st['avance'] >= self.m.avance_reanudacion_m:
-                    if not st['contacto']:
-                        self.paradas_superadas += 1
-                    self._parada = None
-                elif paso.t - st['reanudada'] > self.m.tiempo_max_reanudacion_s:
-                    self._parada = None      # no reanudó a tiempo: no superada
+                self._parada = None         # no superada; la próxima parada se cuenta aparte
+            return
+        if st['reanudada'] is not None and \
+                paso.t - st['reanudada'] >= self.m.tiempo_sin_fallo_tras_reanudar_s:
+            self.paradas_superadas += 1
+            self._parada = None
 
     def _paradas_estimadas(self, paso):
         """Estimación sin verdad (robot real): el seguidor se detiene con el guía
@@ -223,7 +238,7 @@ class Evaluador:
     def resumen(self, completado):
         """Métricas del recorrido (una fila del CSV de episodios)."""
         n = max(self.pasos, 1)
-        sep = self.separaciones
+        sep, dv = self.separaciones, self.desviaciones
         return {
             'pasos': self.pasos,
             'completado_sin_intervencion': int(bool(completado)),
@@ -236,6 +251,12 @@ class Evaluador:
             'paradas_superadas': self.paradas_superadas,
             'paradas_estimadas': self.paradas_estimadas,
             'paradas_superadas_estimadas': self.paradas_superadas_estimadas,
+            'separacion_en_banda_pct_pasos': round(100.0 * sum(
+                self.m.banda_objetivo_m[0] <= d <= self.m.banda_objetivo_m[1] for d in sep) / len(sep), 2)
+            if sep else None,
             'separacion_media_m': round(sum(sep) / len(sep), 4) if sep else None,
+            'desviacion_media_abs_deg': round(sum(dv) / len(dv), 2) if dv else None,
+            'desviacion_menor_15_pct_pasos': round(100.0 * sum(d < 15.0 for d in dv) / len(dv), 2)
+            if dv else None,
             'separacion_min_m': round(min(sep), 4) if sep else None,
         }

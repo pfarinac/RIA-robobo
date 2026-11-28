@@ -135,11 +135,11 @@ def test_controlador_heuristico():
     o = np.zeros(12, np.float32)
     o[0], o[2], o[5] = 1.0, 0.05, 0.9                 # guía lejos, carril válido
     assert c(o)[0] > 0.0                               # acelera (por encima de la v media)
-    o[2] = perfil.guia.tamano_demasiado_cerca_norm     # demasiado cerca
+    o[2] = perfil.guia.tamano_demasiado_cerca_norm + 0.01   # demasiado cerca
     assert c(o)[0] == -1.0                             # v = v_min = 0
-    o[2], o[7] = 0.2, 0.5                              # punto adelantado a la derecha
+    o[0], o[2], o[7] = 0.0, 0.0, 0.5                   # sin guía; punto adelantado a la derecha
     assert c(o)[1] < 0                                 # gira a la derecha (w < 0)
-    o[7], o[1] = 0.0, -0.6                             # guía a la izquierda
+    o[0], o[2], o[7], o[1] = 1.0, 0.4, 0.0, -0.6       # guía visible a la izquierda
     assert c(o)[1] > 0
     o[9] = 1.0                                         # IR: obstáculo delante
     assert c(o)[0] == -1.0

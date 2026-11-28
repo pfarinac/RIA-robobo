@@ -31,13 +31,16 @@ def main():
     parser.add_argument('--configuracion', default='C4')
     parser.add_argument('--registros', default='registros/pruebas')
     parser.add_argument('--sin-check', action='store_true', help='omitir check_env')
+    parser.add_argument('--ip-puente', default=None, help='IP del simulador para el puente')
+    parser.add_argument('--puente-externo', action='store_true', help='usar un puente ya lanzado')
     args = parser.parse_args()
 
     from follow_city_p3_env import NOMBRES_OBS, FollowCityP3Env
     perfil = cargar_perfil(args.perfil)
     env = FollowCityP3Env(perfil, modo='entrenamiento', configuracion=args.configuracion,
                           carpeta_registros=args.registros, etiqueta='prueba', semilla=0,
-                          verbose=True)
+                          verbose=True, ip_puente=args.ip_puente,
+                          puente_externo=args.puente_externo)
     try:
         if not args.sin_check:
             from gymnasium.utils.env_checker import check_env

@@ -266,6 +266,18 @@ class PercepcionGuia:
             confianza=det.confidence, edad_s=edad, etiqueta=det.label,
             motivo_invalida='caducada', bruta=bruta)
 
+    def zona_exclusion(self, t=None, margen_x=0.35, margen_y_px=40, edad_max_s=1.5):
+        """Rectángulo (x0, y0, x1, y1) en píxeles que ocupa el guía, ampliado, para que
+        el detector de carril no lo confunda con una línea (es blanco). Va desde
+        lo alto de la imagen hasta algo por debajo de la caja. None si no hay una
+        detección aceptada reciente."""
+        ahora = time.monotonic() if t is None else t
+        det = self._ultima_valida
+        if det is None or ahora - self._t_ultima_valida > edad_max_s:
+            return None
+        semiancho = det.width * (0.5 + margen_x)
+        return (det.x - semiancho, 0, det.x + semiancho, det.y + det.height / 2.0 + margen_y_px)
+
     def segundos_sin_guia(self, t=None):
         """Segundos sin una detección válida (para la parada operativa)."""
         ahora = time.monotonic() if t is None else t

@@ -174,11 +174,19 @@ class PercepcionCarril:
         self.k_ef = self.k
         self.ultima = ObservacionCarril()
 
-    def mascara(self, imagen_bgr):
+    def mascara(self, imagen_bgr, excluir=None):
+        """Máscara de líneas en la ROI. ``excluir``: rectángulos (x0, y0, x1, y1) en
+        píxeles de la imagen completa que se borran (el guía es blanco como las
+        líneas y, si no se quita, el detector lo toma por la línea discontinua)."""
         alto = imagen_bgr.shape[0]
         y0, y1 = int(self.roi_y0 * alto), int(self.roi_y1 * alto)
         hsv = cv2.cvtColor(imagen_bgr[y0:y1], cv2.COLOR_BGR2HSV)
         m = cv2.inRange(hsv, self.hsv_min, self.hsv_max)
+        for (ex0, ey0, ex1, ey1) in (excluir or []):
+            ya, yb = max(0, int(ey0) - y0), min(m.shape[0], int(ey1) - y0)
+            xa, xb = max(0, int(ex0)), min(m.shape[1], int(ex1))
+            if ya < yb and xa < xb:
+                m[ya:yb, xa:xb] = 0
         return cv2.morphologyEx(m, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8)), y0
 
     def _seleccionar(self, filas, ancho, alto, modelo):
@@ -245,11 +253,12 @@ class PercepcionCarril:
             return None
         return float(Ag[i, j]), float(Bg[i, j])
 
-    def procesar(self, imagen_bgr, t_imagen=None, t=None):
-        """Procesa un fotograma BGR. Devuelve y guarda la ObservacionCarril."""
+    def procesar(self, imagen_bgr, t_imagen=None, t=None, excluir=None):
+        """Procesa un fotograma BGR. Devuelve y guarda la ObservacionCarril.
+        ``excluir``: zonas a ignorar (p. ej. la caja ampliada del guía)."""
         ahora = time.monotonic() if t is None else t
         alto, ancho = imagen_bgr.shape[:2]
-        mascara, y0 = self.mascara(imagen_bgr)
+        mascara, y0 = self.mascara(imagen_bgr, excluir)
         indices = np.linspace(0, mascara.shape[0] - 1, self.n_filas).astype(int)
         filas = [(int(i) + y0, tramos(mascara[i] > 0, self.ancho_min_linea)) for i in indices]
         umbral = max(4.0, 0.025 * ancho)
@@ -285,6 +294,7 @@ class PercepcionCarril:
         if medido is not None:
             ajuste = medido
         obs = ObservacionCarril(depuracion={'y0': y0, 'puntos': puntos, 'ajuste': ajuste,
+                                            'excluir': list(excluir or []),
                                             'yh': self.horizonte_ef * alto, 'k': self.k_ef})
         obs.edad_imagen_s = (ahora - t_imagen) if t_imagen is not None else 0.0
         if ajuste is not None:
@@ -382,6 +392,8 @@ class PercepcionCarril:
         alto, ancho = img.shape[:2]
         if 'y0' in d:
             cv2.line(img, (0, d['y0']), (ancho, d['y0']), (255, 255, 0), 1)
+        for (ex0, ey0, ex1, ey1) in d.get('excluir', []):
+            cv2.rectangle(img, (int(ex0), int(ey0)), (int(ex1), int(ey1)), (255, 0, 255), 1)
         yh = d.get('yh', 0)
         for dy, x, s in d.get('puntos', []):
             color = (255, 0, 0) if s < 0 else (0, 165, 255)

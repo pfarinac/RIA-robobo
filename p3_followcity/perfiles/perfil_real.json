@@ -89,10 +89,10 @@
     "confianza_min": 0.6,
     "ancho_imagen_px": 480,
     "alto_imagen_px": 640,
-    "metrica_tamano": "raiz_area",
+    "metrica_tamano": "ancho",
     "escala_tamano": 1.0,
-    "tamano_objetivo_norm": 0.2,
-    "tamano_demasiado_cerca_norm": 0.35,
+    "tamano_objetivo_norm": 0.4,
+    "tamano_demasiado_cerca_norm": 0.48,
     "usar_timestamp_para_frescura": true,
     "antiguedad_max_deteccion_s": 0.8,
     "tiempo_perdido_max_s": 3.0,
@@ -102,10 +102,10 @@
       "confianza_min": "adimensional [0.5,1]: confianza mínima para aceptar una detección",
       "ancho_imagen_px": "píxeles: ancho del sistema de coordenadas de x y width de detected_object (coincide con la imagen: 480). x, y son el CENTRO de la caja",
       "alto_imagen_px": "píxeles: alto del sistema de coordenadas de y y height (640)",
-      "metrica_tamano": "texto: 'raiz_area' (sqrt(w·h)/sqrt(W·H)), 'altura' (h/H) o 'ancho' (w/W)",
+      "metrica_tamano": "texto: 'ancho' (w/W, por defecto), 'altura' (h/H) o 'raiz_area'. Se usa el ANCHO porque, con el tilt de 105°, la parte inferior del guía se sale de la imagen por debajo de ~0,35 m y la altura y el área dejan de crecer; el ancho sigue creciendo hasta ~0,32 m",
       "escala_tamano": "adimensional: multiplica el tamaño aparente; se calibra entre sim y real. PENDIENTE: valor de analizar_calibracion_guia.py",
-      "tamano_objetivo_norm": "adimensional [0,1]: tamaño normalizado que corresponde a la separación deseada",
-      "tamano_demasiado_cerca_norm": "adimensional [0,1]: a partir de este tamaño el guía está demasiado cerca",
+      "tamano_objetivo_norm": "adimensional [0,1]: ancho aparente con el guía a la separación deseada (~0,40 m en RoboboSim: ancho ≈ 0,16 / distancia). PENDIENTE: calibrar en real con inspeccionar_guia.py --calibrar",
+      "tamano_demasiado_cerca_norm": "adimensional [0,1]: ancho aparente a ~0,33 m; por encima el guía está demasiado cerca (cerca del límite en que satura)",
       "usar_timestamp_para_frescura": "booleano: si es true, una detección con el mismo timestamp que la anterior no se considera nueva",
       "antiguedad_max_deteccion_s": "segundos: si la última detección NUEVA (timestamp distinto) es más antigua, el guía se considera no visible. Debe ser >= 1,5 x el periodo entre detecciones nuevas que mide comprobar_puente.py",
       "tiempo_perdido_max_s": "segundos: tiempo sin ver al guía que se normaliza a 1 en la observación",
@@ -158,31 +158,20 @@
   },
   "episodio": {
     "duracion_entrenamiento_s": 60.0,
-    "duracion_evaluacion_s": 180.0,
-    "distancia_inicial_m": [
-      0.3,
-      0.45
-    ],
-    "lateral_inicial_m": 0.03,
-    "giro_inicial_deg": 8.0,
-    "espera_tras_colocar_s": 1.0,
+    "duracion_evaluacion_s": 120.0,
     "timeout_imagen_s": 15.0,
     "espera_real_s": 60.0,
     "espera_percepcion_s": 15.0,
     "observaciones_validas_reinicio": 3,
-    "intentos_colocacion": 3,
+    "intentos_reinicio": 3,
     "_doc": {
       "duracion_entrenamiento_s": "segundos: duración máxima de un episodio de entrenamiento (truncamiento)",
-      "duracion_evaluacion_s": "segundos: duración de un recorrido de evaluación; completarlo sin parada operativa = recorrido sin intervención",
-      "distancia_inicial_m": "[mín, máx] m: distancia centro a centro detrás del guía al colocar al seguidor (solo sim)",
-      "lateral_inicial_m": "m: desplazamiento lateral aleatorio máximo al colocar (± , solo sim)",
-      "giro_inicial_deg": "grados: giro aleatorio máximo respecto al rumbo del guía al colocar (±, solo sim)",
-      "espera_tras_colocar_s": "segundos: espera tras colocar al seguidor antes de empezar",
-      "timeout_imagen_s": "segundos: si no llega ninguna imagen en este tiempo, error (cámara caída)",
+      "duracion_evaluacion_s": "segundos: duración de un recorrido de evaluación (120 s, anexo B de la P2); completarlo sin fallo ni parada operativa = recorrido sin intervención",
+      "timeout_imagen_s": "segundos: si no llega ninguna imagen en este tiempo, error (¿está lanzado nodo_camara.py?)",
       "espera_real_s": "segundos: en real, espera máxima a que el operador coloque al robot (guía visible y carril válido)",
-      "espera_percepcion_s": "segundos: en sim, espera máxima tras colocar a que guía y carril sean válidos (cubre la latencia de la cámara)",
+      "espera_percepcion_s": "segundos: espera máxima, tras reiniciar, a que guía y carril sean válidos (cubre la reconexión de la cámara)",
       "observaciones_validas_reinicio": "adimensional: imágenes nuevas seguidas con guía visible y carril válido para empezar el episodio",
-      "intentos_colocacion": "adimensional: en sim, recolocaciones si no se logra percepción válida"
+      "intentos_reinicio": "adimensional: en sim, reinicios seguidos de la escena si no se logra percepción válida al empezar"
     }
   },
   "recompensa": {
@@ -210,27 +199,30 @@
     }
   },
   "metricas": {
-    "separacion_objetivo_m": 0.4,
+    "separacion_objetivo_m": 0.32,
     "semiancho_carril_m": 0.155,
     "desplazamiento_salida": 0.5,
-    "distancia_contacto_m": 0.2,
-    "distancia_perdido_m": 1.0,
-    "avance_reanudacion_m": 0.05,
-    "tiempo_max_reanudacion_s": 10.0,
+    "distancia_contacto_m": 0.12,
+    "distancia_perdido_m": 0.9,
     "v_parado_m_s": 0.01,
-    "tamano_cerca_parada": 0.15,
+    "tamano_cerca_parada": 0.35,
     "tiempo_parada_min_s": 1.5,
+    "tiempo_sin_fallo_tras_reanudar_s": 10.0,
+    "banda_objetivo_m": [
+      0.2,
+      0.45
+    ],
     "_doc": {
-      "separacion_objetivo_m": "m: separación deseada centro a centro con el guía",
+      "separacion_objetivo_m": "m: separación deseada (centro del seguidor al punto de referencia 0,08 m detrás del guía); 0,32 equivale a 0,40 m centro a centro y queda dentro de la banda",
       "semiancho_carril_m": "m: medio ancho del carril (0,31/2 medido); con el centro del robot más lejos de la trayectoria del guía, está fuera (verdad, solo sim)",
       "desplazamiento_salida": "anchos de carril: |desplazamiento percibido| a partir del cual se estima salida de carril (0,5 = centro del robot sobre la línea)",
-      "distancia_contacto_m": "m: distancia centro a centro por debajo de la cual hay contacto con el guía (solo sim; en real, IR)",
-      "distancia_perdido_m": "m: separación a partir de la cual termina el episodio en sim (el guía se detiene a esperar a ~1 m)",
-      "avance_reanudacion_m": "m: avance del seguidor tras reanudar el guía para dar la parada por superada",
-      "tiempo_max_reanudacion_s": "segundos: tiempo máximo para reanudar tras la parada del guía",
+      "distancia_contacto_m": "m: separación por debajo de la cual hay colisión (anexo B de la P2: 0,12 m, = 0,20 m centro a centro); solo sim, en real se usa el IR",
+      "distancia_perdido_m": "m: separación a partir de la cual el guía está perdido y termina el episodio (anexo B: 0,90 m); solo sim",
       "v_parado_m_s": "m/s: velocidad enviada por debajo de la cual el seguidor se considera parado (estimación sin verdad)",
       "tamano_cerca_parada": "adimensional: tamaño aparente mínimo del guía para considerar que el seguidor se ha parado detrás de él",
-      "tiempo_parada_min_s": "segundos: duración mínima de una parada para contarla (estimación sin verdad)"
+      "tiempo_parada_min_s": "segundos: duración mínima de una parada para contarla (estimación sin verdad)",
+      "tiempo_sin_fallo_tras_reanudar_s": "segundos: parada superada si el seguidor se detiene sin colisión y sigue sin fallo este tiempo tras reanudar el guía (anexo B)",
+      "banda_objetivo_m": "[mín, máx] m: banda objetivo de separación (anexo B); métrica % de pasos dentro"
     }
   },
   "aleatorizacion": {

@@ -36,8 +36,17 @@ Al final está la [referencia técnica](#4-referencia-técnica) con el detalle d
 | Medida (28/11, vuestro PC) | Valor | Ajuste aplicado |
 |---|---|---|
 | Detecciones nuevas del guía | cada 0,51 s | `guia.antiguedad_max_deteccion_s` = 0,9 s |
-| Latencia orden → imagen | 0,21 s | `episodio.espera_tras_colocar_s` = 0,5 s |
+| Latencia orden → imagen | 0,21 s | (cubierta por la espera de 3 imágenes válidas al empezar) |
 | Velocidad del guía en C4 | hasta ~0,17 m/s | `politica.v_max_m_s` = 0,25 (antes 0,10), `w_max` = 0,6 rad/s |
+| Velocidad real del seguidor frente a la enviada (28/11) | ~2× (0,25 enviado → ~0,50 m/s) | `politica.escala_v` = 0,5 y `escala_w` = −0,5: la acción queda en m/s reales |
+| Signo del giro (28/11) | `angular.z` > 0 gira a la **derecha** en RoboboSim (al revés que ROS) | `escala_w` negativa: en la política, w > 0 sigue siendo izquierda. En el robot real hay que comprobarlo (parte 7) |
+
+> **Cambio del 28/11 (tarde): reinicio desde la posición inicial.** Cada episodio empieza
+> ahora con `reset_simulation`, como en el anexo B de la P2: guía y seguidor vuelven a la
+> posición inicial de la escena y el seguidor parte parado. Como el reinicio corta las
+> conexiones del puente con el simulador, **el puente lo lanza y lo relanza el propio script**
+> (la Terminal A ya solo hace falta para las herramientas de comprobación). Las métricas siguen los parámetros del anexo B. Detalles
+> en [2.3](#23-cosas-que-hemos-descubierto-del-simulador-y-del-puente).
 
 El orden recomendado es:
 1. Probar el script con un entrenamiento corto (5 minutos).
@@ -46,7 +55,6 @@ El orden recomendado es:
 
 ---|---|---|
 | Periodo entre detecciones nuevas del guía | `comprobar_puente.py` | `guia.antiguedad_max_deteccion_s` ≥ 1,5 × periodo |
-| Latencia orden → imagen | `medir_latencia_camara.py` | `episodio.espera_tras_colocar_s` ≥ latencia |
 | Que el entorno funcione con vuestro ritmo real | `probar_entorno.py` | nada si los episodios llegan al final |
 
 Después viene la parte 5 (script de entrenamiento SAC). Los registros que generéis quedan en
@@ -66,8 +74,8 @@ Después viene la parte 5 (script de entrenamiento SAC). Los registros que gener
 | Observación | 8 componentes (blob, tiempo sin verlo y velocidades) | 12 componentes: guía (5), carril (4), IR (1) y acción anterior (2) |
 | Velocidad mínima | 0,03 m/s en la P1 (no podía pararse) | 0 m/s: puede detenerse en las paradas del guía (C4) |
 | IR frontales | Índices 1–5 (incluía un trasero por error) | Índices 0–4 (FrontLL, FrontL, FrontC, FrontR, FrontRR) |
-| Reinicio de episodio | `reset_simulation` | Colocar al seguidor detrás del guía con `set_robot_location` |
-| Parada operativa | Fin por blob perdido o choque | Contacto, guía sin ver 3 s o carril sin validar 2 s; igual en sim y real |
+| Reinicio de episodio | `reset_simulation` | `reset_simulation` (posición inicial), con el puente lanzado y relanzado por el script |
+| Fin de episodio | Fin por blob perdido o choque | Anexo B: colisión (< 0,12 m), guía perdido (> 0,90 m o sin verlo 3 s); además, carril sin validar 2 s. Igual en sim y real (en real, contacto por IR) |
 | Registros | CSV propios por script | `pasos.csv` y `episodios.csv` con todos los campos del apartado 6.4 |
 
 ### 2.2. Cambios por parte
@@ -119,15 +127,32 @@ evaluación determinista al terminar. Cambios respecto a la P1:
 
 Afectan a cómo se usa todo esto, así que conviene tenerlas presentes:
 
-- **No uséis `reset_simulation` con la cámara activa.** El simulador reinicia su servidor de
-  vídeo y el puente no sabe reconectar: `image_raw` deja de publicar hasta relanzar el puente.
-  El entorno no lo usa.
+- **`reset_simulation` corta las conexiones del puente.** Con RoboboSim 4.4.6 y el puente
+  actual, tras el reinicio dejan de funcionar `cmd_vel` y `move_tilt` (el simulador cierra la
+  conexión de control) y `image_raw` deja de publicar (cierra la de vídeo). Lo engañoso es que
+  `base/ir` y `detected_object` **siguen publicando el último valor**, así que parece vivo.
+  Por eso el entorno, tras cada reinicio, fija el tilt y espera una imagen nueva: si algo no
+  responde, relanza el puente (`puente.py`, unos segundos) y sigue. Si en vuestro PC el
+  reinicio no rompe nada, no se relanza nunca. El número de relanzamientos queda en
+  `registros/.../puente.log`.
+- **Reinicio = posición inicial de la escena.** El seguidor empieza a ~0,76 m del guía (0,68 m
+  de separación medida al punto de referencia), parado.
 - **El guía solo arranca cuando el seguidor se le acerca**, y **se para a esperar** si el
   seguidor se queda a más de ~1 m.
 - **La cámara del simulador es vertical: 480×640.** El detector del guía usa las mismas
   coordenadas, y `x, y` son el centro de la caja.
 - **Con el tilt inicial del simulador, la caja del guía sale cortada.** Con 105° se ven bien el
   guía y el carril.
+- **El guía es blanco, como las líneas.** Con el guía delante, el detector de carril tomaba su
+  cuerpo por la línea discontinua y el robot giraba hacia donde no debía. Ahora se excluye la
+  zona de la caja del guía (ampliada) al buscar las líneas.
+- **El tamaño del guía se mide por el ancho de la caja, no por el área.** El detector solo encuadra
+  el cuerpo blanco. Por debajo de ~0,35 m su parte inferior se sale de la imagen con cualquier
+  tilt (se probaron 90°, 95°, 100° y 105°), así que la altura y el área dejan de crecer y el
+  robot no sabía si estaba cerca o lejos. El ancho crece hasta ~0,32 m (≈ 0,16 / distancia):
+  objetivo 0,40 (a 0,40 m), demasiado cerca 0,48.
+- **Tilt de 105°:** es el que más mira hacia abajo de los probados. Es el que menos corta al guía
+  de cerca y el que mejor ve el carril.
 - **No hay que enviar `cmd_vel` más rápido de 5 Hz.** A 10 Hz el simulador avisa de "too many
   messages".
 - **El puente convierte v en velocidad de rueda como `int(v / 0,032 · 10)`.** Por debajo de
@@ -144,12 +169,14 @@ Afectan a cómo se usa todo esto, así que conviene tenerlas presentes:
 |---|---|---|---|
 | **Simulador** | Windows | RoboboSim en Follow City | Sí, todo el rato |
 | **PowerShell** | Windows, carpeta `pc-robobo_new\Windows` | Arrancar el contenedor y abrir terminales | Solo al principio |
-| **Terminal A** | Contenedor (`terminal.ps1`) | Puente ROS 2 ↔ simulador | Sí, todo el rato |
+| **Terminal A** | Contenedor (`terminal.ps1`) | Puente ROS 2 ↔ simulador, **solo para las herramientas** de 3.4 y para el robot real | Mientras se usan las herramientas |
 | **Terminal B** | Contenedor (`terminal.ps1`) | Nuestros scripts (pruebas, herramientas, entrenamiento) | Sí |
-| Terminal C (opcional) | Contenedor (`terminal.ps1`) | Vigilar topics (`ros2 topic hz ...`) | Opcional |
 
-En total: **el simulador y dos terminales del contenedor** (A y B). La tercera solo hace falta
-para depurar.
+**`p3_entrenar.py` y `probar_entorno.py` lanzan su propio puente** (y lo relanzan tras cada
+reinicio si hace falta). Antes de usarlos, **cerrad el puente de la Terminal A** (Ctrl+C): si
+hay otro puente en marcha, el script se para y lo avisa. Las herramientas de comprobación
+(`comprobar_puente.py`, `inspeccionar_*.py`, `medir_latencia_camara.py`) sí necesitan el puente
+de la Terminal A.
 
 > Dentro del contenedor el repositorio está en `/docker-ros/ws/RIA-robobo`. Los ficheros que
 > se generan (registros, figuras, imágenes) aparecen en Windows en
@@ -205,7 +232,8 @@ hasta **Follow City**. Dentro del mundo:
 .\terminal.ps1       # Terminal B (en otra ventana de PowerShell)
 ```
 
-**3) Terminal A: puente ROS 2.** Se deja corriendo:
+**3) Terminal A: puente ROS 2 (solo para las herramientas de 3.4).** Para entrenar o evaluar
+no hace falta: el script lanza el suyo.
 
 ```bash
 ros2 run robobo_ros2 robobo_container --ros-args -p ip:=host.docker.internal \
@@ -214,7 +242,8 @@ ros2 run robobo_ros2 robobo_container --ros-args -p ip:=host.docker.internal \
 
 Debe acabar mostrando `Connected to RoboboSim`, `SimNode started` y `Video stream connected`.
 Si en algún momento deja de llegar imagen (por ejemplo, tras pulsar el reinicio del simulador),
-**Ctrl+C y volved a lanzar este mismo comando**.
+**Ctrl+C y volved a lanzar este mismo comando**. **Cerradlo (Ctrl+C) antes de lanzar
+`probar_entorno.py` o `p3_entrenar.py`.**
 
 **4) Terminal B: carpeta de trabajo.**
 
@@ -256,26 +285,16 @@ python3 herramientas/inspeccionar_carril.py --perfil sim --tilt --salida registr
 - En el del carril, con el robot en la carretera, `val=1` y `ambos`. Las imágenes con las
   detecciones dibujadas quedan en `registros/carril_vivo/` (abridlas desde Windows).
 
-Para observar el carril mientras el robot avanza sin seguir al guía, dejad el inspector abierto
-en una terminal y ejecutad en otra:
-
-```bash
-python3 herramientas/avanzar_recto.py --perfil sim --velocidad 0.05 --duracion 10
-```
-
-El movimiento está limitado a 30 s como máximo y se detiene al acabar o con Ctrl+C. Esta prueba
-solo avanza recto; no sigue las curvas ni corrige la trayectoria según el carril.
-
 **Paso 4. Medir la latencia de la cámara** (el robot gira un poco y vuelve):
 
 ```bash
 python3 herramientas/medir_latencia_camara.py --perfil sim --repeticiones 3
 ```
 
-Si la mediana es mayor que 1 s, poned `episodio.espera_tras_colocar_s` a ese valor en
-`perfiles/perfil_sim.json`.
+Si la mediana es mayor que 1 s, avisad: habría que revisar `seguridad.periodo_control_s`.
 
-**Paso 5. Probar el entorno completo** (unos 2–3 minutos):
+**Paso 5. Probar el entorno completo** (unos 3–4 minutos). **Antes, Ctrl+C en la Terminal A**:
+el script lanza su propio puente.
 
 ```bash
 python3 herramientas/probar_entorno.py --perfil sim --episodios 2 --pasos 60
@@ -286,7 +305,9 @@ Debéis ver:
 - `check_env: OK salvo determinismo (esperado en tiempo real)`;
 - cada episodio empieza con `guia_visib=+1.00` y `carril_val` > 0,5;
 - los pasos tardan ~0,25 s;
-- en el simulador, el seguidor aparece detrás del guía al empezar cada episodio.
+- en el simulador, **cada episodio empieza con la escena reiniciada**: los dos robots vuelven a
+  la posición inicial y el seguidor arranca parado. Si sale `Tras el reinicio: ...; se relanza
+  el puente`, es lo esperado: el puente se relanza solo y sigue.
 
 Con la política recta es normal que acabe saliéndose del carril; lo importante es que no haya
 errores y que los episodios no terminen en el primer paso.
@@ -304,8 +325,13 @@ revisarlo.
 
 ### 3.5. Entrenamiento (parte 5)
 
-Con el simulador en C4 sin pelota y el puente en marcha (sección 3.3), todo en la **Terminal B**
-desde `p3_followcity`.
+Con el simulador en C4 sin pelota, todo en la **Terminal B** desde `p3_followcity`, y **sin
+ningún puente lanzado en la Terminal A**: el script lanza el suyo y lo relanza cuando un
+reinicio lo deja sin conexión. Así un entrenamiento largo no necesita a nadie delante.
+
+**Sí: este es el entrenamiento en simulación que pide el enunciado** (SAC, RoboboCity, C4 sin
+pelota). Cada episodio termina por colisión, guía perdido, carril perdido o tiempo, y el
+siguiente empieza con la escena reiniciada a la posición inicial.
 
 **1) Comprobar la observación** (no mueve el robot; Ctrl+C para salir):
 
@@ -328,10 +354,12 @@ Debéis ver los mensajes `Demostración heurística`, `episodio 1..3`, `[punto d
 `Modelo guardado` y la `EVALUACIÓN TRAS ENTRENAMIENTO`. Es normal que estos episodios acaben
 pronto (`contacto`, `carril_perdido`): el modelo apenas ha aprendido.
 
-**3) Línea base heurística** (para comparar en la memoria; unos 15 minutos):
+**3) Línea base heurística** (para comparar en la memoria; unos 15 minutos). Con `--imagenes 4`
+se guarda 1 imagen de cada 4 pasos, con el carril y el guía dibujados, en
+`registros/evaluacion/heuristica_.../imagenes/`, para ver qué percibe el robot en marcha:
 
 ```bash
-python3 p3_entrenar.py --evaluar --politica heuristica --perfil sim --episodios 5
+python3 p3_entrenar.py --evaluar --politica heuristica --perfil sim --episodios 5 --imagenes 4
 ```
 
 **4) Entrenamiento largo.** Unas 2–3 horas para 150 episodios de hasta 60 s. Se lanza en
@@ -358,7 +386,8 @@ python3 p3_entrenar.py --continuar modelos/p3_sac_seed2026 --episodios-entrenami
 
 Para pararlo a propósito: `pkill -INT -f p3_entrenar.py`. Guarda antes de salir.
 
-**6) Evaluar el modelo** entrenado (determinista, recorridos de 180 s):
+**6) Evaluar el modelo** entrenado (determinista, recorridos de 120 s como en el anexo B; en C4
+el anexo pide dos recorridos como mínimo):
 
 ```bash
 python3 p3_entrenar.py --evaluar --perfil sim --episodios 5
@@ -375,6 +404,7 @@ python3 p3_entrenar.py --evaluar --perfil sim --modelo modelos/p3_sac_seed2026/m
 | Pasos y episodios del entrenamiento | `registros/entrenamiento/sac_seed2026_entrenamiento_C4_<fecha>/` |
 | Pasos y episodios de cada evaluación | `registros/evaluacion/<modelo>_evaluacion_C4_<fecha>/` |
 | Curvas de TensorBoard | `p3_logs/sac_seed2026/` |
+| Salida del puente (y sus relanzamientos) | `registros/<entrenamiento o evaluacion>/.../puente.log` o `registros/puente.log` |
 
 > TensorBoard: el contenedor no publica ningún puerto, así que no se puede abrir en el
 > navegador de Windows tal cual. Las figuras de la memoria se generarán a partir de
@@ -414,12 +444,14 @@ Convención: `--lateral` > 0 con el robot a la **derecha** del centro, `--rot` >
 
 | Síntoma | Causa | Solución |
 |---|---|---|
-| `No llegan imágenes de .../image_raw` | La cámara del puente se cayó (p. ej. tras un reinicio del simulador) | Ctrl+C en la Terminal A y relanzar el puente |
+| `Ya hay un puente robobo_ros2 en marcha` | El puente de la Terminal A sigue abierto | Ctrl+C en la Terminal A y relanzar el script |
+| `El puente no responde tras 3 lanzamientos` | Simulador cerrado, fuera de Follow City o colgado | Abrir el simulador en Follow City (C4, sin pelota) y `--continuar` |
+| `No llegan imágenes de .../image_raw` (con la Terminal A) | La cámara del puente se cayó (p. ej. tras un reinicio del simulador) | Ctrl+C en la Terminal A y relanzar el puente |
 | `ModuleNotFoundError: robobosim` al lanzar el puente | Falta el paquete | `pip install --user --break-system-packages robobosim` |
 | `No llegan las poses del simulador` | Puente sin el módulo `sim` | Lanzar con `modules:="['camera','object_recognition','sim']"` |
 | El guía no aparece o lleva pelota verde | Ajustes de escena sin aplicar | Scene Settings → Mode3, sin Green Ball → Apply |
 | `guia_visib` parpadea entre 0 y 1 | Detecciones más lentas que `antiguedad_max_deteccion_s` | Paso 2 y subir ese valor |
-| Los episodios terminan enseguida con `carril_perdido` | Latencia de cámara mayor que la espera tras colocar | Paso 4 y subir `espera_tras_colocar_s` |
+| Los episodios terminan enseguida con `carril_perdido` | La cámara no ve el carril al empezar | Abrid `registros/.../imagenes` (con `--imagenes 4`) y pasádmelas |
 | `Perfil ... no válido` | Parámetro sin unidad o valor incoherente | Leer el mensaje: dice qué clave falla |
 | `Ya existe modelos/p3_sac_seed2026` | Ya hay un entrenamiento con esa semilla | `--continuar` para seguirlo, o `--sobrescribir` para empezar de cero |
 | El entrenamiento se para con `pérdida de datos ROS` | Se cayó la cámara o el puente | Relanzar el puente y `--continuar` |
@@ -442,7 +474,8 @@ p3_followcity/
 ├── ros_carril.py                 # suscripción a image_raw -> PercepcionCarril (bajo demanda)
 ├── follow_city_p3_env.py         # entorno Gymnasium (mismo código en sim y real)
 ├── recompensa_metricas.py        # recompensa, parada operativa y métricas de recorrido (sin ROS)
-├── sim_privilegiado.py           # SOLO sim: poses, rastro del guía, colocación, paradas
+├── sim_privilegiado.py           # SOLO sim: poses, reset_simulation, separación, rastro, paradas
+├── puente.py                     # SOLO sim: lanza y relanza el puente robobo_ros2
 ├── registro.py                   # CSV de pasos y de episodios
 ├── controlador_heuristico.py     # controlador clásico: demostración y línea base (sin ROS)
 ├── p3_entrenar.py                # --calibrar / --entrenar / --continuar / --evaluar
@@ -565,25 +598,35 @@ del carril (horizonte, ancho por píxel) y el tamaño aparente del guía están 
 esa inclinación. Moverlo cambiaría el significado de esas observaciones y obligaría a añadir
 el ángulo a la observación y a recalibrar en cada posición.
 
-**Recompensa** (por paso, pesos en `recompensa`): separación (campana en 0,40 m) + centrado
+**Separación (anexo B):** distancia del centro del seguidor al punto 0,08 m detrás del centro
+del guía (donde iba la pelota verde; la nota del anexo permite usar la posición del guía).
+Banda objetivo 0,20–0,45 m; objetivo de la recompensa 0,32 m (= 0,40 m centro a centro).
+**Desviación:** ángulo entre el rumbo del seguidor y la dirección a ese punto.
+
+**Recompensa** (por paso, pesos en `recompensa`): separación (campana en 0,32 m) + centrado
 en el carril − fuera de carril − guía no visible − |Δw| + premio por quedarse quieto con el
 guía parado y cerca (C4) − penalización al terminar. En simulación usa la distancia y el
 desplazamiento **verdaderos** (`usar_privilegiada`); la política nunca los ve.
 
-**Parada operativa** (sim y real): contacto (IR frontal ≥ umbral o, en sim, < 0,20 m),
-guía sin ver 3 s o carril sin validar 2 s → se detiene el robot y termina el episodio. En
-sim, además, el episodio termina si el guía se aleja a más de 1 m (el guía se para a esperar).
+**Fin de episodio** (sim y real, anexo B): colisión (IR frontal ≥ umbral o, en sim,
+separación < 0,12 m), guía perdido (sin verlo 3 s o, en sim, separación > 0,90 m) o carril
+sin validar 2 s → se detiene el robot y termina el episodio (no completado). Completado: llegar
+al tiempo máximo (60 s entrenando, 120 s evaluando) sin nada de lo anterior.
 
-**Reinicio.** En sim se coloca al seguidor 0,30–0,45 m detrás del guía, con ±3 cm y ±8° de
-variación, mediante `set_robot_location` (no `reset_simulation`, que rompe la cámara del
-puente). Después se espera a tener 3 imágenes seguidas con guía visible y carril válido, lo
-que cubre la latencia de la cámara. En real se detiene el robot y se espera a que el operador
-lo coloque.
+**Reinicio.** En sim, `reset_simulation`: ambos robots a la posición inicial de la escena, el
+seguidor parado y el guía esperando a que se acerque. Después se fija el tilt, se comprueba que
+el robot responde y llegan imágenes (si no, se relanza el puente) y se espera a tener 3
+imágenes seguidas con guía visible y carril válido. `simulacion.modo_reinicio = "colocar"`
+deja el reinicio antiguo con `set_robot_location`, solo para depurar. En real se detiene el
+robot y se espera a que el operador lo coloque.
 
 **Verdad en simulación** (`sim_privilegiado.py`): el guía recorre el centro del carril, así
 que su rastro de posiciones es la línea central. El desplazamiento lateral real es la
 distancia con signo del seguidor a ese rastro (fuera de carril si supera 0,155 m). El guía se
-considera parado si su velocidad media en 2 s se mantiene por debajo de 5 mm/s durante 1,5 s.
+considera parado (anexo B) si su velocidad media en 1 s está por debajo de 0,01 m/s durante
+más de 0,5 s; la espera inicial antes de arrancar no cuenta como parada. Parada superada: no
+hay colisión durante la parada y el seguidor sigue sin fallo 10 s después de que el guía
+reanude.
 
 **Registros** (`registros/<etiqueta>_<modo>_<C>_<fecha>/`):
 - `pasos.csv`: marcas temporales, configuración, perfil, observación normalizada, acción y
@@ -591,9 +634,10 @@ considera parado si su velocidad media en 2 s se mantiene por debajo de 5 mm/s d
   contacto, salida de carril (verdad y estimada) y verdad del simulador.
 - `episodios.csv`: completado sin intervención, motivo de fin, % de pasos fuera de carril
   (verdad y estimada) y número de salidas, contactos, paradas del guía y paradas superadas
-  (verdad en sim; estimadas por percepción en real), separación media y mínima.
+  (verdad en sim; estimadas por percepción en real), % de pasos en la banda 0,20–0,45 m,
+  separación media y mínima, desviación media y % de pasos con desviación < 15°.
 
-**Probar el entorno** (simulador abierto en C4 sin pelota y puente lanzado):
+**Probar el entorno** (simulador abierto en C4 sin pelota; el script lanza el puente):
 
 ```bash
 python3 herramientas/probar_entorno.py --perfil sim --episodios 2 --pasos 40
@@ -604,8 +648,8 @@ python3 herramientas/probar_entorno.py --perfil sim --politica aleatoria --sin-c
 cumplir un robot en tiempo real.
 
 **Antes de entrenar en vuestro PC** (lo que mi entorno sin GPU no puede medir):
-1. `medir_latencia_camara.py --perfil sim`: si la latencia es > 0,5 s, subir
-   `episodio.espera_tras_colocar_s` a la latencia y revisar `periodo_control_s`.
+1. `medir_latencia_camara.py --perfil sim`: si la latencia es > 0,5 s, revisar
+   `periodo_control_s`.
 2. `comprobar_puente.py --perfil sim`: periodo entre detecciones nuevas →
    `guia.antiguedad_max_deteccion_s` ≥ 1,5 × ese periodo.
 3. Velocidad mínima efectiva: el puente convierte v a velocidad de rueda como
@@ -631,10 +675,10 @@ Medido el 24/11 con el simulador Linux, renderizado por software (sin GPU):
 - `herramientas/escena_follow_city.py` genera la configuración C1–C4 / pelota para lanzar el
   simulador sin tocar la interfaz (`-sceneConfig`). C4 = Mode3 con valores por defecto.
 - **El guía arranca cuando el seguidor se le acerca**, no con el reinicio.
-- **`reset_simulation` rompe la cámara del puente:** el simulador reinicia su servidor de
-  streaming y `camera_node` intenta reconectar con el socket viejo ("Transport endpoint is
-  already connected"); `start_camera` no lo arregla. Hay que relanzar el puente (o al menos
-  el nodo de cámara). El entorno lo evita reiniciando con `set_robot_location`.
+- **`reset_simulation` corta las conexiones del puente** (control y vídeo; los topics de IR y
+  detecciones siguen republicando el último valor). `camera_node` intenta reconectar con el
+  socket viejo ("Transport endpoint is already connected"). El entorno lo resuelve relanzando
+  el puente tras el reinicio cuando no responde (`puente.py`).
 - **Latencia orden → imagen ~3,9 s** aquí (sin GPU, cola de fotogramas). Medirla en vuestro PC
   con `medir_latencia_camara.py`: condiciona el periodo de control y la observación.
 - **Zona muerta de motores:** a 0,02 m/s el robot simulado no avanza. Medir la velocidad mínima

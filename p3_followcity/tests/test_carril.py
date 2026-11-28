@@ -118,6 +118,16 @@ def test_cabeceo_se_compensa():
     assert abs(det.horizonte_ef - (PERFIL.carril.horizonte_y_frac - 0.04)) < 0.01
 
 
+def test_guia_blanco_se_excluye():
+    """Un robot blanco en el centro del carril se toma por línea si no se excluye."""
+    img = sintetica(0.15, 0.0)
+    cv2.ellipse(img, (240, 430), (60, 70), 0, 0, 360, (230, 230, 230), -1)   # el "guía"
+    det = PercepcionCarril(PERFIL.carril, PERFIL.seguridad)
+    det.reiniciar(0.0)
+    con = det.procesar(img, t=0.0, excluir=[(240 - 85, 0, 240 + 85, 520)])
+    assert con.valido and abs(con.desplazamiento - 0.15) < 0.08, con.desplazamiento
+
+
 def test_vector_y_registro():
     o = detectar(sintetica(0.1, 5.0))
     assert len(o.vector()) == 4 and all(-1 <= v <= 1 for v in o.vector())

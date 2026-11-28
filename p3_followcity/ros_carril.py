@@ -54,8 +54,9 @@ class SuscriptorCarril:
             return None, None
         return imagen_a_numpy(self._msg), self._t_llegada
 
-    def observar(self):
-        """Procesa el último fotograma si es nuevo y está dentro de la antigüedad máxima."""
+    def observar(self, excluir=None):
+        """Procesa el último fotograma si es nuevo y está dentro de la antigüedad máxima.
+        ``excluir``: zonas de la imagen que no deben tomarse por líneas (el guía)."""
         ahora = time.monotonic()
         if self._msg is None or ahora - self._t_llegada > self.antiguedad_max:
             # Sin imagen reciente: cuenta como carril no visto.
@@ -68,7 +69,7 @@ class SuscriptorCarril:
             return self.percepcion.ultima       # mismo fotograma: no se reprocesa
         self._procesada = self.n_imagenes
         img, t_img = self.ultima_imagen()
-        return self.percepcion.procesar(img, t_imagen=t_img, t=ahora)
+        return self.percepcion.procesar(img, t_imagen=t_img, t=ahora, excluir=excluir)
 
     def esperar_imagen(self, timeout_s, spin=None):
         spin = spin or (lambda: rclpy.spin_once(self.nodo, timeout_sec=0.05))

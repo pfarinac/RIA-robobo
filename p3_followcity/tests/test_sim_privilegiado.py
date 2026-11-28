@@ -18,6 +18,7 @@ for _m in ('rclpy', 'robobo_ros2_interfaces', 'robobo_ros2_interfaces.msg',
 sys.modules['robobo_ros2_interfaces.msg'].RobotLocation = object
 sys.modules['robobo_ros2_interfaces.msg'].SimObjectArray = object
 sys.modules['robobo_ros2_interfaces.srv'].SetRobotLocation = object
+sys.modules['robobo_ros2_interfaces.srv'].ResetSimulation = object
 
 import sim_privilegiado  # noqa: E402
 from sim_privilegiado import SimPrivilegiado  # noqa: E402
@@ -28,6 +29,7 @@ class Cfg:
     ventana_velocidad_s = 2.0
     v_guia_parado_m_s = 0.005
     parada_min_s = 1.5
+    punto_referencia_detras_m = 0.08
 
 
 def sim_con_rastro(puntos):
@@ -36,6 +38,7 @@ def sim_con_rastro(puntos):
     s.rastro = deque(puntos)
     s._hist_guia = deque()
     s._desde_lento = None
+    s.guia_arrancado = True
     return s
 
 
@@ -92,6 +95,26 @@ def test_parada_con_histeresis(monkeypatch=None):
     finally:
         import time as _time
         sim_privilegiado.time.monotonic = _time.monotonic
+
+
+def test_espera_inicial_no_es_parada():
+    s = sim_con_rastro([])
+    s.guia_arrancado = False
+    s._hist_guia = deque([(0.0, 0.0, 0.0), (2.0, 0.0, 0.0)])       # quieto al empezar
+    assert s.guia_parado()[0] is None and not s.guia_arrancado
+    s._hist_guia = deque([(0.0, 0.0, 0.0), (2.0, 0.0, 200.0)])     # arranca a 0,1 m/s
+    assert s.guia_parado()[0] is False and s.guia_arrancado
+
+
+def test_separacion_al_punto_de_referencia():
+    """Separación del anexo B: al punto 0,08 m detrás del guía; desviación en grados."""
+    s = sim_con_rastro([])
+    s.guia, s.guia_rumbo = (0.0, 1000.0), 0.0         # guía mirando a +z
+    s.seg, s.seg_rumbo = (0.0, 600.0), 0.0            # seguidor 0,40 m detrás, alineado
+    m = s.medir()
+    assert abs(m.distancia_m - 0.32) < 1e-6 and abs(m.desviacion_deg) < 1e-6
+    s.seg_rumbo = 20.0                                # girado 20° a la izquierda
+    assert abs(s.medir().desviacion_deg + 20.0) < 1e-6
 
 
 if __name__ == '__main__':

@@ -90,11 +90,17 @@ def fijar_semillas(semilla):
     set_random_seed(semilla)
 
 
+IMAGENES_CADA = 0   # lo fija --imagenes
+OPCIONES_PUENTE = {}  # lo fijan --ip-puente y --puente-externo
+
+
 def crear_entorno(perfil, modo, configuracion, carpeta_registros, etiqueta, semilla):
     from follow_city_p3_env import FollowCityP3Env
-    return FollowCityP3Env(perfil, modo=modo, configuracion=configuracion,
-                           carpeta_registros=carpeta_registros, etiqueta=etiqueta,
-                           semilla=semilla, verbose=False)
+    env = FollowCityP3Env(perfil, modo=modo, configuracion=configuracion,
+                          carpeta_registros=carpeta_registros, etiqueta=etiqueta,
+                          semilla=semilla, verbose=False, **OPCIONES_PUENTE)
+    env.guardar_imagenes_cada = IMAGENES_CADA
+    return env
 
 
 def ruta_tensorboard(ruta):
@@ -409,14 +415,25 @@ def main():
                         help='ruido gaussiano sobre las acciones de demostración')
     parser.add_argument('--guardar-cada', type=int, default=10,
                         help='episodios entre puntos de control')
+    parser.add_argument('--imagenes', type=int, default=0, metavar='N',
+                        help='guardar 1 imagen de diagnóstico (carril y guía dibujados) cada N pasos')
     parser.add_argument('--sobrescribir', action='store_true',
                         help='con --entrenar, empezar de cero aunque exista el experimento')
+    parser.add_argument('--ip-puente', default=None,
+                        help='IP del simulador para el puente que lanza el script '
+                             '(por defecto simulacion.puente_ip del perfil: host.docker.internal)')
+    parser.add_argument('--puente-externo', action='store_true',
+                        help='no lanzar el puente: usar uno ya lanzado a mano (si un reinicio lo '
+                             'rompe, el script se detiene)')
     args = parser.parse_args()
     for nombre in ('episodios_entrenamiento', 'episodios', 'guardar_cada'):
         if getattr(args, nombre) < 1:
             parser.error('--{} debe ser al menos 1'.format(nombre.replace('_', '-')))
 
     os.chdir(CARPETA)
+    global IMAGENES_CADA
+    IMAGENES_CADA = max(0, args.imagenes)
+    OPCIONES_PUENTE.update(ip_puente=args.ip_puente, puente_externo=args.puente_externo)
     if args.calibrar:
         modo_calibrar(args)
     elif args.entrenar:
