@@ -108,7 +108,14 @@ class Evaluador:
             return 'contacto'
         if paso.guia_tiempo_perdido_s >= self.s.tiempo_max_sin_guia_s:
             return 'guia_perdido'
-        if paso.carril_tiempo_sin_s >= self.s.tiempo_max_sin_carril_s:
+        # Con el guía visible y cerca, el propio guía (blanco) tapa las líneas: no es
+        # una salida del carril, así que se tolera más tiempo sin carril válido.
+        # (Entrenamiento del 28/11: el 30 % de los episodios acababa en
+        # carril_perdido con el robot centrado, a 0,35 m del guía parado.)
+        limite = self.s.tiempo_max_sin_carril_s
+        if paso.guia_visible and paso.guia_tamano >= self.m.tamano_cerca_parada:
+            limite = max(limite, self.s.tiempo_max_sin_carril_guia_cerca_s)
+        if paso.carril_tiempo_sin_s >= limite:
             return 'carril_perdido'
         return ''
 
@@ -131,6 +138,15 @@ class Evaluador:
             desglose['separacion'] = 0.0
         if not paso.guia_visible:
             desglose['guia_no_visible'] = -R.penalizacion_guia_no_visible
+
+        # Acercamiento: la campana anterior es casi 0 a partir de ~0,6 m, así que lejos
+        # del guía no había nada que empujara a alcanzarlo (entrenamiento del 28/11: el
+        # 58 % de los episodios acababa en guia_lejos yendo a ~0,10 m/s con el guía a
+        # ~0,19 m/s). Término lineal: máximo en el objetivo o más cerca, 0 al perderlo.
+        if priv.distancia_m is not None and R.peso_acercamiento > 0:
+            exceso = (priv.distancia_m - self.m.separacion_objetivo_m) / max(
+                self.m.distancia_perdido_m - self.m.separacion_objetivo_m, 1e-6)
+            desglose['acercamiento'] = R.peso_acercamiento * (1.0 - _recortar(exceso, 0.0, 1.0))
 
         # Carril: centrado (con verdad si existe; si no, con la percepción).
         if priv.lateral_m is not None:

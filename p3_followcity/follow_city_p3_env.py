@@ -228,11 +228,20 @@ class FollowCityP3Env(gym.Env):
         from robobo_ros2_interfaces.srv import ResetSimulation
         cfg = self.perfil.simulacion
         cli = self.nodo.create_client(ResetSimulation, cfg.srv_reset)
-        if cli.wait_for_service(timeout_sec=2.0):
+        # Un puente que se acaba de cerrar (p. ej. el de un entrenamiento anterior)
+        # tarda unos segundos en desaparecer de ROS: se espera hasta 20 s.
+        limite, avisado = time.monotonic() + 20.0, False
+        while cli.wait_for_service(timeout_sec=1.0) and time.monotonic() < limite:
+            if not avisado:
+                print('Hay un puente en marcha; esperando a que se cierre (hasta 20 s)...', flush=True)
+                avisado = True
+            time.sleep(1.0)
+        if cli.wait_for_service(timeout_sec=1.0):
             raise RuntimeError(
                 'Ya hay un puente robobo_ros2 en marcha. Este script lanza y relanza su propio '
-                'puente (simulacion.gestionar_puente): cerrad el otro (Ctrl+C) y volved a '
-                'lanzar, o pasad --puente-externo para usar el vuestro.')
+                'puente (simulacion.gestionar_puente): cerrad el otro (Ctrl+C en su terminal, o '
+                '"pkill -f robobo_container" si quedó colgado; compruébalo con '
+                '"pgrep -af robobo_container") y volved a lanzar, o pasad --puente-externo.')
         self.nodo.destroy_client(cli)
         ruta_log = Path(carpeta_registros or 'registros') / 'puente.log'
         self.gestor = GestorPuente(cfg, ip=ip, ruta_log=ruta_log, log=print)

@@ -116,7 +116,7 @@
   },
   "politica": {
     "v_min_m_s": 0.0,
-    "v_max_m_s": 0.25,
+    "v_max_m_s": 0.3,
     "w_max_rad_s": 0.6,
     "dw_max_rad_s": 0.25,
     "escala_v": 0.5,
@@ -125,7 +125,7 @@
     "obs_recorte": 1.0,
     "_doc": {
       "v_min_m_s": "m/s: velocidad lineal mínima. 0 para poder detenerse en las paradas del guía (C4)",
-      "v_max_m_s": "m/s REALES (tras escala_v): velocidad lineal máxima. En C4 el guía llega a ~0,17 m/s (medido con la pose del simulador), hay que poder alcanzarlo",
+      "v_max_m_s": "m/s REALES (tras escala_v): velocidad lineal máxima. En C4 el guía llega a ~0,20 m/s (medido en el entrenamiento del 28/11); 0,30 deja margen para recuperar distancia",
       "w_max_rad_s": "rad/s: módulo máximo de la velocidad angular (curvas del anillo a la velocidad del guía)",
       "dw_max_rad_s": "rad/s: cambio máximo de la velocidad angular entre dos pasos",
       "escala_v": "adimensional: consigna enviada = v·escala_v. En RoboboSim el robot avanza ~2 veces lo que se le pide por cmd_vel (medido el 28/11 con la pose del simulador: 0,25 enviado -> ~0,50 m/s reales), así que con 0,5 la acción v queda en m/s reales",
@@ -148,6 +148,7 @@
       4
     ],
     "ir_umbral_contacto": 0.85,
+    "tiempo_max_sin_carril_guia_cerca_s": 8.0,
     "_doc": {
       "periodo_control_s": "segundos: periodo del bucle de la política (un paso de RL)",
       "periodo_reenvio_cmd_vel_s": "segundos: periodo de reenvío de cmd_vel (< 0,5 s del watchdog del puente). A 10 Hz el simulador avisa \"You are sending too many messages\", por eso 0,2 s",
@@ -155,7 +156,8 @@
       "tiempo_max_sin_guia_s": "segundos: sin ver al guía durante este tiempo se activa la parada operativa",
       "ir_saturacion": "unidades brutas del IR: valor que se normaliza a 1",
       "ir_indices_frontales": "lista de índices: sensores frontales en base/ir (orden del puente: FrontLL, FrontL, FrontC, FrontR, FrontRR, BackL, BackC, BackR)",
-      "ir_umbral_contacto": "adimensional [0,1]: proximidad IR normalizada que se cuenta como contacto"
+      "ir_umbral_contacto": "adimensional [0,1]: proximidad IR normalizada que se cuenta como contacto",
+      "tiempo_max_sin_carril_guia_cerca_s": "segundos: límite sin carril válido cuando el guía se ve cerca (tamaño ≥ metricas.tamano_cerca_parada): el guía tapa las líneas, sobre todo cuando para"
     }
   },
   "episodio": {
@@ -198,6 +200,7 @@
     "peso_suavidad": 0.05,
     "peso_parar": 0.5,
     "penalizacion_fin": 20.0,
+    "peso_acercamiento": 0.5,
     "_doc": {
       "usar_privilegiada": "booleano: en simulación, usar la distancia y el lateral verdaderos en la recompensa (nunca en la observación)",
       "peso_separacion": "recompensa/paso: máximo del término de separación (campana en la separación objetivo)",
@@ -208,7 +211,8 @@
       "penalizacion_fuera_carril": "recompensa/paso: penalización por paso fuera del carril",
       "peso_suavidad": "recompensa/paso: penalización por |Δw|/dw_max",
       "peso_parar": "recompensa/paso: premio por quedarse quieto cuando el guía está parado y cerca (C4)",
-      "penalizacion_fin": "recompensa: penalización al terminar por parada operativa o guía demasiado lejos"
+      "penalizacion_fin": "recompensa: penalización al terminar por parada operativa o guía demasiado lejos",
+      "peso_acercamiento": "peso del término lineal de acercamiento (solo con verdad del simulador): máximo con separación ≤ objetivo y 0 en distancia_perdido_m; da gradiente para alcanzar al guía cuando la campana ya es ~0"
     }
   },
   "metricas": {

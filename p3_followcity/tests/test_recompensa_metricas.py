@@ -59,6 +59,18 @@ def test_parada_operativa():
     assert e.parada_operativa(paso(distancia_m=0.1)) == 'contacto'
     assert e.parada_operativa(paso(perdido=s.tiempo_max_sin_guia_s)) == 'guia_perdido'
     assert e.parada_operativa(paso(sin_carril=s.tiempo_max_sin_carril_s)) == 'carril_perdido'
+    # guía cerca tapando las líneas: se tolera hasta el otro límite
+    cerca = P.metricas.tamano_cerca_parada + 0.05
+    assert e.parada_operativa(paso(tam=cerca, sin_carril=s.tiempo_max_sin_carril_s)) == ''
+    assert e.parada_operativa(paso(tam=cerca, sin_carril=s.tiempo_max_sin_carril_guia_cerca_s)) \
+        == 'carril_perdido'
+
+
+def test_acercamiento_da_gradiente_lejos():
+    e = Evaluador(P)
+    r6, _ = e.recompensa(paso(distancia_m=0.60, lateral_m=0.0), '')
+    r8, d = e.recompensa(paso(distancia_m=0.80, lateral_m=0.0), '')
+    assert r6 > r8 + 0.1 and d['acercamiento'] > 0
 
 
 def test_salidas_de_carril_y_contactos():
