@@ -8,6 +8,12 @@
 p1_followcity.zip/p3_followcity/registros/
 /p3_followcity/logs/
 __pycache__/
+<<<<<<< HEAD
 /p3_followcity/p3_logs/
 /p3_followcity/modelos/*/replay_buffer.pkl
 /p3_followcity/registros/
+=======
+carril_recta
+carril_vivo
+pruebas
+>>>>>>> f720987d118ff0fbf9ab7816c26f3842ee4ccbb9

@@ -256,6 +256,16 @@ python3 herramientas/inspeccionar_carril.py --perfil sim --tilt --salida registr
 - En el del carril, con el robot en la carretera, `val=1` y `ambos`. Las imágenes con las
   detecciones dibujadas quedan en `registros/carril_vivo/` (abridlas desde Windows).
 
+Para observar el carril mientras el robot avanza sin seguir al guía, dejad el inspector abierto
+en una terminal y ejecutad en otra:
+
+```bash
+python3 herramientas/avanzar_recto.py --perfil sim --velocidad 0.05 --duracion 10
+```
+
+El movimiento está limitado a 30 s como máximo y se detiene al acabar o con Ctrl+C. Esta prueba
+solo avanza recto; no sigue las curvas ni corrige la trayectoria según el carril.
+
 **Paso 4. Medir la latencia de la cámara** (el robot gira un poco y vuelve):
 
 ```bash
