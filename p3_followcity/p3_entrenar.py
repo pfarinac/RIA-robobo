@@ -60,6 +60,15 @@ RUTA_REGISTROS = CARPETA / 'registros'
 # reduce el buffer (cabe de sobra todo el entrenamiento) y el lote, por el
 # coste en tiempo real de cada paso. learning_starts se cuenta DESPUÉS de los
 # pasos de demostración.
+#
+# Actualizaciones al final de cada episodio (train_freq=(1, 'episode'),
+# gradient_steps=-1: tantas actualizaciones como pasos tuvo el episodio, la
+# misma proporción 1:1 que train_freq=1). Con train_freq=1, SB3 hace la
+# actualización entre un paso y el siguiente: en el contenedor de Windows eso
+# alargó cada paso de 0,26 s a ~0,9 s (medido el 28/11), así que el robot
+# recibía órdenes a ~1 Hz y los temporizadores de carril y guía (en tiempo
+# real) vencían en 3-4 pasos. Al final del episodio el robot está parado y el
+# control en marcha mantiene siempre su periodo, sea cual sea la CPU.
 HIPER_SAC = dict(
     learning_rate=3e-4,
     buffer_size=100_000,
@@ -67,8 +76,8 @@ HIPER_SAC = dict(
     batch_size=128,
     tau=0.005,
     gamma=0.99,
-    train_freq=1,
-    gradient_steps=1,
+    train_freq=(1, 'episode'),
+    gradient_steps=-1,
     ent_coef='auto',
     policy_kwargs=dict(net_arch=[256, 256]),
 )
@@ -256,6 +265,10 @@ def _entrenar(args, continuar, perfil, dir_exp, nombre_exp, episodios_previos,
         if continuar:
             modelo = SAC.load(dir_exp / 'ultimo.zip', env=env,
                               tensorboard_log=ruta_tensorboard(RUTA_LOGS / nombre_exp))
+            # Modelos guardados con train_freq=1: se pasa a actualizar al final del episodio.
+            from stable_baselines3.common.type_aliases import TrainFreq, TrainFrequencyUnit
+            modelo.train_freq = TrainFreq(1, TrainFrequencyUnit.EPISODE)
+            modelo.gradient_steps = -1
             if (dir_exp / 'replay_buffer.pkl').exists():
                 modelo.load_replay_buffer(dir_exp / 'replay_buffer.pkl')
                 print('Buffer de repetición recuperado: {} transiciones.'.format(
@@ -419,6 +432,9 @@ def main():
                         help='guardar 1 imagen de diagnóstico (carril y guía dibujados) cada N pasos')
     parser.add_argument('--sobrescribir', action='store_true',
                         help='con --entrenar, empezar de cero aunque exista el experimento')
+    parser.add_argument('--hilos-torch', type=int, default=1,
+                        help='hilos de PyTorch (1 por defecto: el simulador ya usa la CPU y más '
+                             'hilos en el contenedor ralentizan las actualizaciones)')
     parser.add_argument('--ip-puente', default=None,
                         help='IP del simulador para el puente que lanza el script '
                              '(por defecto simulacion.puente_ip del perfil: host.docker.internal)')
@@ -431,6 +447,12 @@ def main():
             parser.error('--{} debe ser al menos 1'.format(nombre.replace('_', '-')))
 
     os.chdir(CARPETA)
+    if args.hilos_torch > 0:
+        try:
+            import torch
+            torch.set_num_threads(args.hilos_torch)
+        except ImportError:
+            pass
     global IMAGENES_CADA
     IMAGENES_CADA = max(0, args.imagenes)
     OPCIONES_PUENTE.update(ip_puente=args.ip_puente, puente_externo=args.puente_externo)

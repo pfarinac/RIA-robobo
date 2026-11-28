@@ -135,6 +135,14 @@ Afectan a cómo se usa todo esto, así que conviene tenerlas presentes:
   responde, relanza el puente (`puente.py`, unos segundos) y sigue. Si en vuestro PC el
   reinicio no rompe nada, no se relanza nunca. El número de relanzamientos queda en
   `registros/.../puente.log`.
+- **En vuestro PC el reinicio casi siempre deja el puente vivo, pero no siempre:** en el
+  primer entrenamiento (28/11) falló tras 79 reinicios. Por eso para entrenar es mejor dejar
+  que el script gestione el puente (sin `--puente-externo`): si un reinicio lo rompe, lo
+  relanza y sigue.
+- **SAC actualiza la red al final de cada episodio**, con el robot parado. Con una
+  actualización por paso (como en la P1), en el contenedor cada paso pasaba de 0,26 s a
+  ~0,9 s: el robot recibía órdenes a ~1 Hz y los episodios acababan por carril o guía
+  perdidos en 3–4 pasos. Además PyTorch usa 1 hilo (`--hilos-torch`).
 - **Reinicio = posición inicial de la escena.** El seguidor empieza a ~0,76 m del guía (0,68 m
   de separación medida al punto de referencia), parado.
 - **El guía solo arranca cuando el seguidor se le acerca**, y **se para a esperar** si el
