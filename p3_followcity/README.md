@@ -25,25 +25,32 @@ Al final está la [referencia técnica](#4-referencia-técnica) con el detalle d
 | 2 | Percepción del guía con `detected_object` | ✅ hecho y probado en RoboboSim |
 | 3 | Percepción del carril con OpenCV desde `camera/image_raw` | ✅ hecho, calibrado en RoboboSim |
 | 4 | Entorno Gymnasium (observación, acción, recompensa, parada operativa, registros) | ✅ hecho y probado en RoboboSim |
-| 5 | Script de entrenamiento SAC | ⏳ siguiente |
-| 6 | Evaluación en C4 y figuras | ⏳ |
+| 5 | Script de entrenamiento SAC (`p3_entrenar.py`) | ✅ hecho y probado en RoboboSim |
+| 6 | Evaluación en C4 y figuras | ⏳ siguiente (tras entrenar) |
 | 7 | Transferencia al robot real (calibración, métricas antes/después) | ⏳ |
 | 8 | Memoria, vídeo, declaración de IA, `.zip` | ⏳ |
 
-**Ahora os toca ejecutar en vuestro PC los pasos 1 a 6 de la [guía](#3-guía-de-ejecución-paso-a-paso)**
-(unos 30–45 minutos). Todo se ha desarrollado y probado con RoboboSim 4.4.6, pero en un entorno
-sin GPU donde el simulador va mucho más lento que el tiempo real y la cámara llega con ~4 s de
-retraso. Por eso hay tres valores que **solo se pueden medir en vuestro PC** y que hay que poner
-en `perfiles/perfil_sim.json` antes de entrenar:
+**Ahora toca entrenar** (sección [3.5](#35-entrenamiento-parte-5)). Las comprobaciones de los pasos
+1–6 ya se hicieron el 28/11 y los perfiles están ajustados con vuestras medidas:
 
-| Qué se mide | Con qué | Qué se ajusta en el perfil |
+| Medida (28/11, vuestro PC) | Valor | Ajuste aplicado |
 |---|---|---|
+| Detecciones nuevas del guía | cada 0,51 s | `guia.antiguedad_max_deteccion_s` = 0,9 s |
+| Latencia orden → imagen | 0,21 s | `episodio.espera_tras_colocar_s` = 0,5 s |
+| Velocidad del guía en C4 | hasta ~0,17 m/s | `politica.v_max_m_s` = 0,25 (antes 0,10), `w_max` = 0,6 rad/s |
+
+El orden recomendado es:
+1. Probar el script con un entrenamiento corto (5 minutos).
+2. Medir la línea base heurística.
+3. Lanzar el entrenamiento largo (150 episodios, unas 2–3 h, reanudable).
+
+---|---|---|
 | Periodo entre detecciones nuevas del guía | `comprobar_puente.py` | `guia.antiguedad_max_deteccion_s` ≥ 1,5 × periodo |
 | Latencia orden → imagen | `medir_latencia_camara.py` | `episodio.espera_tras_colocar_s` ≥ latencia |
 | Que el entorno funcione con vuestro ritmo real | `probar_entorno.py` | nada si los episodios llegan al final |
 
-Mientras tanto, preparo la parte 5 (entrenamiento SAC). Los registros que generéis quedan en
-`p3_followcity/registros/`; puedo leerlos directamente desde vuestra carpeta.
+Después viene la parte 5 (script de entrenamiento SAC). Los registros que generéis quedan en
+`p3_followcity/registros/`, así que se pueden revisar directamente desde la carpeta.
 
 ---
 
@@ -56,8 +63,8 @@ Mientras tanto, preparo la parte 5 (entrenamiento SAC). Los registros que gener�
 | Detección del guía | Pelota verde (`color_blobs`) | El propio Robobo guía (`detected_object`), sin pelota |
 | Carril | No se usaba | Detector nuevo con OpenCV sobre `camera/image_raw` |
 | Parámetros | `follow_city_config.py` (código) | `perfiles/perfil_sim.json` y `perfil_real.json`, con unidades obligatorias |
-| Observación | 8 componentes (solo blob y acción) | 12 componentes: guía (5), carril (4), IR (1) y acción anterior (2) |
-| Velocidad mínima | 0,03 m/s (no podía pararse) | 0 m/s: puede detenerse en las paradas del guía (C4) |
+| Observación | 8 componentes (blob, tiempo sin verlo y velocidades) | 12 componentes: guía (5), carril (4), IR (1) y acción anterior (2) |
+| Velocidad mínima | 0,03 m/s en la P1 (no podía pararse) | 0 m/s: puede detenerse en las paradas del guía (C4) |
 | IR frontales | Índices 1–5 (incluía un trasero por error) | Índices 0–4 (FrontLL, FrontL, FrontC, FrontR, FrontRR) |
 | Reinicio de episodio | `reset_simulation` | Colocar al seguidor detrás del guía con `set_robot_location` |
 | Parada operativa | Fin por blob perdido o choque | Contacto, guía sin ver 3 s o carril sin validar 2 s; igual en sim y real |
@@ -93,6 +100,20 @@ suelo (cámara a altura y tilt fijos).
 - **Reinicio:** coloca al seguidor 0,30–0,45 m detrás del guía.
 - **Métricas:** recorridos sin intervención, % de pasos fuera del carril, contactos y paradas
   superadas.
+
+**Entrenamiento (parte 5).** `p3_entrenar.py` mantiene la estructura de `p1_entrenar.py`: modos
+`--calibrar`, `--entrenar` y `--evaluar`, SAC con hiperparámetros reducidos, un callback que
+cuenta episodios y se detiene al alcanzar el objetivo, guardado del modelo si se interrumpe y
+evaluación determinista al terminar. Cambios respecto a la P1:
+
+| P1 | P3 |
+|---|---|
+| `follow_city_config.py` | `--perfil sim` o `--perfil real` |
+| SAC o PPO | Solo SAC (el de la P3) |
+| 5 pasos fijos de "avance recto" al empezar cada episodio | `--pasos-demostracion`: antes de aprender se llenan los primeros pasos del buffer con un **controlador heurístico** (pure pursuit del carril + distancia al guía) con ruido, guardando la acción ejecutada |
+| Un solo `.zip` al final | **Puntos de control** cada `--guardar-cada` episodios (modelo + buffer de repetición + `estado.json`) y **`--continuar`** para reanudar |
+| Resumen con recompensa y motivo de fin | Métricas del enunciado: recorridos sin intervención, % fuera de carril, contactos y paradas superadas; `pasos.csv` y `episodios.csv` |
+| — | `--evaluar --politica heuristica`: la misma evaluación con el controlador heurístico, como **línea base** para la memoria |
 
 ### 2.3. Cosas que hemos descubierto del simulador y del puente
 
@@ -203,7 +224,7 @@ cd /docker-ros/ws/RIA-robobo/p3_followcity
 
 Todos los comandos siguientes se ejecutan en la **Terminal B**, desde esta carpeta.
 
-### 3.4. Pasos de comprobación (lo que toca ahora)
+### 3.4. Pasos de comprobación (hechos el 28/11; repetir si cambia el PC o el simulador)
 
 **Paso 1. Pruebas sin ROS** (no necesitan simulador; deben salir todas "superadas"):
 
@@ -268,10 +289,90 @@ column -s, -t < $(ls -td registros/pruebas/*/ | head -1)episodios.csv | less -S
 ```
 
 `episodios.csv` debe tener una fila por episodio con `motivo_fin`, salidas de carril, contactos y
-paradas. Si algo no cuadra, decídmelo: puedo leer los registros directamente desde vuestra
-carpeta.
+paradas. Si algo no cuadra, los registros de esta carpeta tienen todo lo necesario para
+revisarlo.
 
-### 3.5. Robot real (más adelante, parte 7)
+### 3.5. Entrenamiento (parte 5)
+
+Con el simulador en C4 sin pelota y el puente en marcha (sección 3.3), todo en la **Terminal B**
+desde `p3_followcity`.
+
+**1) Comprobar la observación** (no mueve el robot; Ctrl+C para salir):
+
+```bash
+python3 p3_entrenar.py --calibrar --perfil sim
+```
+
+Con el seguidor detrás del guía, debe salir `guía vis=1` y `carril val` > 0,5 con `ambos`.
+
+**2) Prueba corta del script** (unos 5 minutos; crea `modelos/p3_sac_seed1`, que luego se puede
+borrar):
+
+```bash
+python3 tests/test_entrenar_falso.py          # sin ROS: ciclo completo con un entorno falso
+python3 p3_entrenar.py --entrenar --perfil sim --seed 1 --episodios-entrenamiento 3 \
+    --pasos-demostracion 60 --guardar-cada 1 --episodios-evaluacion 1
+```
+
+Debéis ver los mensajes `Demostración heurística`, `episodio 1..3`, `[punto de control ...]`,
+`Modelo guardado` y la `EVALUACIÓN TRAS ENTRENAMIENTO`. Es normal que estos episodios acaben
+pronto (`contacto`, `carril_perdido`): el modelo apenas ha aprendido.
+
+**3) Línea base heurística** (para comparar en la memoria; unos 15 minutos):
+
+```bash
+python3 p3_entrenar.py --evaluar --politica heuristica --perfil sim --episodios 5
+```
+
+**4) Entrenamiento largo.** Unas 2–3 horas para 150 episodios de hasta 60 s. Se lanza en
+segundo plano con `nohup`, para que siga aunque se cierre la terminal, y con la salida a un
+fichero:
+
+```bash
+mkdir -p registros
+nohup python3 p3_entrenar.py --entrenar --perfil sim --seed 2026 \
+    --episodios-entrenamiento 150 > registros/entrenamiento_seed2026.log 2>&1 &
+tail -f registros/entrenamiento_seed2026.log      # Ctrl+C deja de mirar, NO para el entrenamiento
+```
+
+Cada línea `episodio N` resume ese episodio: pasos, recompensa, motivo de fin, % fuera de
+carril, contactos, paradas y separación media. Si los episodios se alargan y acaban por
+`completado`, está aprendiendo.
+
+**5) Si se corta** (corte de luz, el puente se cae, Ctrl+C...): se guarda un punto de control
+cada 10 episodios y también al interrumpir. Para seguir donde se quedó:
+
+```bash
+python3 p3_entrenar.py --continuar modelos/p3_sac_seed2026 --episodios-entrenamiento 150
+```
+
+Para pararlo a propósito: `pkill -INT -f p3_entrenar.py`. Guarda antes de salir.
+
+**6) Evaluar el modelo** entrenado (determinista, recorridos de 180 s):
+
+```bash
+python3 p3_entrenar.py --evaluar --perfil sim --episodios 5
+# otro modelo o punto de control:
+python3 p3_entrenar.py --evaluar --perfil sim --modelo modelos/p3_sac_seed2026/modelo_ep0100.zip
+```
+
+**Dónde queda cada cosa:**
+
+| Qué | Dónde |
+|---|---|
+| Modelo final | `modelos/p3_sac_seed2026.zip` (es el que usa `--evaluar` por defecto) |
+| Puntos de control, buffer y estado | `modelos/p3_sac_seed2026/` |
+| Pasos y episodios del entrenamiento | `registros/entrenamiento/sac_seed2026_entrenamiento_C4_<fecha>/` |
+| Pasos y episodios de cada evaluación | `registros/evaluacion/<modelo>_evaluacion_C4_<fecha>/` |
+| Curvas de TensorBoard | `p3_logs/sac_seed2026/` |
+
+> TensorBoard: el contenedor no publica ningún puerto, así que no se puede abrir en el
+> navegador de Windows tal cual. Las figuras de la memoria se generarán a partir de
+> `episodios.csv`, que tiene todo lo necesario (parte 6). Si queréis verlo en vivo, añadid
+> `ports: ["6006:6006"]` al servicio en `docker-compose.yml` y lanzad
+> `tensorboard --logdir p3_logs --bind_all`.
+
+### 3.6. Robot real (más adelante, parte 7)
 
 Lo mismo con `--perfil real`. En la **Terminal A** el puente apunta a la IP del móvil del Robobo y
 **sin** el módulo `sim`:
@@ -299,7 +400,7 @@ python3 herramientas/calibrar_carril.py --perfil real --carpeta registros/carril
 Convención: `--lateral` > 0 con el robot a la **derecha** del centro, `--rot` > 0 girado a la
 **derecha**.
 
-### 3.6. Problemas frecuentes
+### 3.7. Problemas frecuentes
 
 | Síntoma | Causa | Solución |
 |---|---|---|
@@ -310,6 +411,8 @@ Convención: `--lateral` > 0 con el robot a la **derecha** del centro, `--rot` >
 | `guia_visib` parpadea entre 0 y 1 | Detecciones más lentas que `antiguedad_max_deteccion_s` | Paso 2 y subir ese valor |
 | Los episodios terminan enseguida con `carril_perdido` | Latencia de cámara mayor que la espera tras colocar | Paso 4 y subir `espera_tras_colocar_s` |
 | `Perfil ... no válido` | Parámetro sin unidad o valor incoherente | Leer el mensaje: dice qué clave falla |
+| `Ya existe modelos/p3_sac_seed2026` | Ya hay un entrenamiento con esa semilla | `--continuar` para seguirlo, o `--sobrescribir` para empezar de cero |
+| El entrenamiento se para con `pérdida de datos ROS` | Se cayó la cámara o el puente | Relanzar el puente y `--continuar` |
 | PowerShell no deja ejecutar scripts | Política de ejecución | `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` |
 
 ---
@@ -331,6 +434,11 @@ p3_followcity/
 ├── recompensa_metricas.py        # recompensa, parada operativa y métricas de recorrido (sin ROS)
 ├── sim_privilegiado.py           # SOLO sim: poses, rastro del guía, colocación, paradas
 ├── registro.py                   # CSV de pasos y de episodios
+├── controlador_heuristico.py     # controlador clásico: demostración y línea base (sin ROS)
+├── p3_entrenar.py                # --calibrar / --entrenar / --continuar / --evaluar
+├── modelos/                      # modelos SAC y puntos de control
+├── p3_logs/                      # TensorBoard
+├── registros/                    # pasos.csv y episodios.csv de cada ejecución
 ├── herramientas/
 │   ├── comprobar_puente.py       # frecuencias, retardos, resolución, servicios
 │   ├── inspeccionar_guia.py      # monitor en vivo y captura de calibración
@@ -343,7 +451,8 @@ p3_followcity/
 ├── tests/test_perfil_y_guia.py   # pruebas sin ROS
 ├── tests/test_carril.py          # pruebas del carril con imágenes sintéticas
 ├── tests/test_recompensa_metricas.py
-└── tests/test_sim_privilegiado.py
+├── tests/test_sim_privilegiado.py
+└── tests/test_entrenar_falso.py  # ciclo de p3_entrenar.py con un entorno falso (necesita SB3)
 ```
 
 ### Selección del perfil

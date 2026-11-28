@@ -28,7 +28,7 @@
     "pan_deg": 0.0,
     "resolucion_ancho_px": 480,
     "resolucion_alto_px": 640,
-    "frecuencia_esperada_hz": 30.0,
+    "frecuencia_esperada_hz": 75.0,
     "antiguedad_max_imagen_s": 0.5,
     "timeout_movimiento_s": 10.0,
     "_doc": {
@@ -96,7 +96,7 @@
     "tamano_objetivo_norm": 0.2,
     "tamano_demasiado_cerca_norm": 0.35,
     "usar_timestamp_para_frescura": true,
-    "antiguedad_max_deteccion_s": 0.6,
+    "antiguedad_max_deteccion_s": 0.9,
     "tiempo_perdido_max_s": 3.0,
     "suavizado_alfa": 1.0,
     "_doc": {
@@ -116,21 +116,21 @@
   },
   "politica": {
     "v_min_m_s": 0.0,
-    "v_max_m_s": 0.1,
-    "w_max_rad_s": 0.35,
-    "dw_max_rad_s": 0.15,
+    "v_max_m_s": 0.25,
+    "w_max_rad_s": 0.6,
+    "dw_max_rad_s": 0.25,
     "escala_v": 1.0,
     "escala_w": 1.0,
-    "ruta_modelo": "modelos/p3_sac_c4.zip",
+    "ruta_modelo": "modelos/p3_sac_seed2026.zip",
     "obs_recorte": 1.0,
     "_doc": {
       "v_min_m_s": "m/s: velocidad lineal mínima. 0 para poder detenerse en las paradas del guía (C4)",
-      "v_max_m_s": "m/s: velocidad lineal máxima",
-      "w_max_rad_s": "rad/s: módulo máximo de la velocidad angular",
+      "v_max_m_s": "m/s: velocidad lineal máxima. En C4 el guía llega a ~0,17 m/s (medido en RoboboSim), hay que poder alcanzarlo",
+      "w_max_rad_s": "rad/s: módulo máximo de la velocidad angular (curvas del anillo a la velocidad del guía)",
       "dw_max_rad_s": "rad/s: cambio máximo de la velocidad angular entre dos pasos",
       "escala_v": "adimensional: corrección de la consigna lineal enviada (calibración de motores)",
       "escala_w": "adimensional: corrección de la consigna angular enviada (calibración de motores)",
-      "ruta_modelo": "ruta: modelo SAC, relativa a la carpeta p3_followcity",
+      "ruta_modelo": "ruta: modelo SAC que usa --evaluar por defecto, relativa a p3_followcity (lo guarda p3_entrenar.py --entrenar)",
       "obs_recorte": "adimensional: las observaciones normalizadas se recortan a [-obs_recorte, obs_recorte]"
     }
   },
@@ -162,12 +162,12 @@
     "duracion_entrenamiento_s": 60.0,
     "duracion_evaluacion_s": 180.0,
     "distancia_inicial_m": [
-      0.3,
-      0.45
+      0.25,
+      0.35
     ],
     "lateral_inicial_m": 0.03,
     "giro_inicial_deg": 8.0,
-    "espera_tras_colocar_s": 1.0,
+    "espera_tras_colocar_s": 0.5,
     "timeout_imagen_s": 15.0,
     "espera_real_s": 60.0,
     "espera_percepcion_s": 15.0,
@@ -179,7 +179,7 @@
       "distancia_inicial_m": "[mín, máx] m: distancia centro a centro detrás del guía al colocar al seguidor (solo sim)",
       "lateral_inicial_m": "m: desplazamiento lateral aleatorio máximo al colocar (± , solo sim)",
       "giro_inicial_deg": "grados: giro aleatorio máximo respecto al rumbo del guía al colocar (±, solo sim)",
-      "espera_tras_colocar_s": "segundos: espera tras colocar al seguidor antes de empezar",
+      "espera_tras_colocar_s": "segundos: espera tras colocar al seguidor (>= latencia orden-imagen medida: 0,21 s en RoboboSim con GPU)",
       "timeout_imagen_s": "segundos: si no llega ninguna imagen en este tiempo, error (cámara caída)",
       "espera_real_s": "segundos: en real, espera máxima a que el operador coloque al robot (guía visible y carril válido)",
       "espera_percepcion_s": "segundos: en sim, espera máxima tras colocar a que guía y carril sean válidos (cubre la latencia de la cámara)",

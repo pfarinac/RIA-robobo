@@ -132,6 +132,26 @@ class FollowCityP3Env(gym.Env):
         self._fin_registrado = True
         self._mover_tilt()
 
+    def configurar(self, modo=None, carpeta_registros=None, etiqueta='p3', configuracion=None):
+        """Cambia de modo (entrenamiento/evaluacion) y, si se indica, de carpeta de
+        registros, sin crear otro nodo ROS. Cierra el episodio en curso."""
+        self._cerrar_episodio(completado=False, motivo='cambio_de_modo')
+        self._detener()
+        if configuracion is not None:
+            self.configuracion = configuracion
+        if modo is not None:
+            self.modo = modo
+            ep = self.perfil.episodio
+            duracion = ep.duracion_entrenamiento_s if modo == 'entrenamiento' else ep.duracion_evaluacion_s
+            self.pasos_max = max(1, int(round(duracion / self.periodo)))
+            self.aleatorizar = bool(self.perfil.aleatorizacion.activa) and modo == 'entrenamiento'
+        if carpeta_registros is not None:
+            if self.registros is not None:
+                self.registros.cerrar()
+            self.registros = Registros(carpeta_registros, '{}_{}_{}'.format(
+                etiqueta, self.modo, self.configuracion))
+        self.episodio = 0
+
     # ------------------------------------------------------------------
     # ROS
     # ------------------------------------------------------------------

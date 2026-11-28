@@ -114,21 +114,21 @@
   },
   "politica": {
     "v_min_m_s": 0.0,
-    "v_max_m_s": 0.1,
-    "w_max_rad_s": 0.35,
-    "dw_max_rad_s": 0.15,
+    "v_max_m_s": 0.25,
+    "w_max_rad_s": 0.6,
+    "dw_max_rad_s": 0.25,
     "escala_v": 1.0,
     "escala_w": 1.0,
-    "ruta_modelo": "modelos/p3_sac_c4.zip",
+    "ruta_modelo": "modelos/p3_sac_seed2026.zip",
     "obs_recorte": 1.0,
     "_doc": {
       "v_min_m_s": "m/s: velocidad lineal mínima. 0 para poder detenerse en las paradas del guía (C4)",
-      "v_max_m_s": "m/s: velocidad lineal máxima",
-      "w_max_rad_s": "rad/s: módulo máximo de la velocidad angular",
+      "v_max_m_s": "m/s: velocidad lineal máxima. En C4 el guía llega a ~0,17 m/s (medido en RoboboSim), hay que poder alcanzarlo",
+      "w_max_rad_s": "rad/s: módulo máximo de la velocidad angular (curvas del anillo a la velocidad del guía)",
       "dw_max_rad_s": "rad/s: cambio máximo de la velocidad angular entre dos pasos",
       "escala_v": "adimensional: corrección de la consigna lineal enviada (calibración de motores). PENDIENTE: tramos rectos cronometrados",
       "escala_w": "adimensional: corrección de la consigna angular enviada (calibración de motores). PENDIENTE: giros sobre sí mismo cronometrados",
-      "ruta_modelo": "ruta: modelo SAC, relativa a la carpeta p3_followcity",
+      "ruta_modelo": "ruta: modelo SAC que usa --evaluar por defecto, relativa a p3_followcity (lo guarda p3_entrenar.py --entrenar)",
       "obs_recorte": "adimensional: las observaciones normalizadas se recortan a [-obs_recorte, obs_recorte]"
     }
   },
